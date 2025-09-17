@@ -244,7 +244,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
     } 
   };
 
-  const doApproveProduct = async (id: number) => { 
+  const doApproveProduct = async (id: string) => { 
     try { 
       const r = await approveProduct(id); 
       if (r.ok) { 
@@ -259,7 +259,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
     } 
   };
 
-  const doRejectProduct = async (id: number) => { 
+  const doRejectProduct = async (id: string) => { 
     try { 
       const r = await rejectProduct(id, ''); 
       if (r.ok) { 
@@ -286,8 +286,8 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {statsData.map((stat, index) => (
-            <Card key={index}>
+          {statsData.map((stat) => (
+            <Card key={stat.title}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
                 <stat.icon className="h-4 w-4 text-muted-foreground" />
@@ -370,10 +370,10 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => doApproveProduct(Number(p.id))}>
+                    <Button size="sm" variant="outline" onClick={() => doApproveProduct(String(p.id))}>
                       <CheckCircle className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => doRejectProduct(Number(p.id))}>
+                    <Button size="sm" variant="outline" onClick={() => doRejectProduct(String(p.id))}>
                       <Ban className="h-4 w-4" />
                     </Button>
                   </div>

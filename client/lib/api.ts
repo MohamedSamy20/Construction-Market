@@ -1,7 +1,17 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 // Default to the public backend URL if env is not provided (use HTTPS to avoid mixed content)
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000/';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+
+// Ensure base has no trailing slash to avoid double slashes when concatenating
+const NORMALIZED_BASE = (() => {
+  try {
+    const base = (API_BASE || '').replace(/\/+$/, '');
+    return base;
+  } catch {
+    return API_BASE;
+  }
+})();
 
 function getAuthToken(): string | null {
   try {
@@ -60,7 +70,16 @@ export async function apiFetch<T>(path: string, options?: {
   auth?: boolean; // include bearer token from storage (default: true)
   signal?: AbortSignal;
 }): Promise<{ data: T | null; ok: boolean; status: number; error?: any }> {
-  const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
+  const url = path.startsWith('http')
+    ? path
+    : (() => {
+        const hasApiOnBase = /\/api\/?$/.test(NORMALIZED_BASE);
+        const startsWithApi = path.startsWith('/api');
+        const base = hasApiOnBase && startsWithApi
+          ? NORMALIZED_BASE.replace(/\/api\/?$/, '')
+          : NORMALIZED_BASE;
+        return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+      })();
   const isForm = typeof FormData !== 'undefined' && options?.body instanceof FormData;
   const headers: Record<string, string> = {
     ...(isForm ? {} : { 'Content-Type': 'application/json' }),

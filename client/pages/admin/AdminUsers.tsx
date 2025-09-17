@@ -8,11 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
-import { 
+import {
   Users, 
   Search,
   Filter,
-  Plus,
   Eye,
   Edit,
   Trash2,
@@ -30,7 +29,6 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { useEffect, useState } from 'react';
 import {
   getAdminUsers as apiGetAdminUsers,
-  addAdminUser as apiAddAdminUser,
   updateAdminUser as apiUpdateAdminUser,
   deleteAdminUser as apiDeleteAdminUser,
   setAdminUserStatus as apiSetAdminUserStatus,
@@ -143,11 +141,7 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
       return matchesSearch && matchesRole && matchesStatus;
     });
 
-  const openCreate = () => {
-    setEditMode(null);
-    setForm({ name: '', email: '', phone: '', role: 'customer', status: 'active', location: '', orders: 0, totalSpent: '0 ر.س' });
-    setFormOpen(true);
-  };
+  // Creation is disabled; only edit is allowed
   const openEdit = (u: UserRow) => {
     setEditMode(u.id);
     setForm({ ...u });
@@ -159,41 +153,22 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
     const parts = String(form.name).trim().split(/\s+/);
     const firstName = parts.shift() || '';
     const lastName = parts.join(' ');
-    if (editMode) {
-      try {
-        setActionLoadingId(editMode);
-        const res = await apiUpdateAdminUser(String(editMode), {
-          firstName,
-          lastName,
-          phoneNumber: String(form.phone),
-          city: String((form.location || '').split(',')[0] || ''),
-          country: String((form.location || '').split(',').slice(1).join(',').trim()),
-          role: (form.role === 'customer' ? 'Customer' : form.role === 'vendor' ? 'Merchant' : form.role === 'technician' ? 'Technician' : 'Admin'),
-        });
-        if (!res.ok) alert('Failed to update user');
-      } catch (e) {
-        console.error(e);
-        alert('Error updating user');
-      } finally { setActionLoadingId(null); }
-    } else {
-      try {
-        setActionLoadingId('new');
-        const res = await apiAddAdminUser({
-          email: String(form.email),
-          password: Math.random().toString(36).slice(2) + 'Aa1!',
-          firstName,
-          lastName,
-          phoneNumber: String(form.phone),
-          city: String((form.location || '').split(',')[0] || ''),
-          country: String((form.location || '').split(',').slice(1).join(',').trim()),
-          role: (form.role === 'customer' ? 'Customer' : form.role === 'vendor' ? 'Merchant' : form.role === 'technician' ? 'Technician' : 'Admin'),
-        });
-        if (!res.ok) alert('Failed to create user');
-      } catch (e) {
-        console.error(e);
-        alert('Error creating user');
-      } finally { setActionLoadingId(null); }
-    }
+    if (!editMode) { return; }
+    try {
+      setActionLoadingId(editMode);
+      const res = await apiUpdateAdminUser(String(editMode), {
+        firstName,
+        lastName,
+        phoneNumber: String(form.phone),
+        city: String((form.location || '').split(',')[0] || ''),
+        country: String((form.location || '').split(',').slice(1).join(',').trim()),
+        role: (form.role === 'customer' ? 'Customer' : form.role === 'vendor' ? 'Merchant' : form.role === 'technician' ? 'Technician' : 'Admin'),
+      });
+      if (!res.ok) alert('Failed to update user');
+    } catch (e) {
+      console.error(e);
+      alert('Error updating user');
+    } finally { setActionLoadingId(null); }
     setFormOpen(false);
     setEditMode(null);
     await reload();
@@ -315,11 +290,6 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
                   <SelectItem value="banned">{t('bannedStatus')}</SelectItem>
                 </SelectContent>
               </Select>
-
-              <Button onClick={openCreate}>
-                <Plus className="mr-2 h-4 w-4" />
-                {t('addUser')}
-              </Button>
             </div>
           </CardContent>
         </Card>
@@ -468,11 +438,11 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
           </CardContent>
         </Card>
 
-        {/* Create / Edit User Dialog */}
+        {/* Edit User Dialog */}
         <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) setEditMode(null); }}>
           <DialogContent className="max-w-lg bg-white/95 backdrop-blur-sm border border-white/20">
             <DialogHeader>
-              <DialogTitle>{editMode ? t('editUser') : t('addUser')}</DialogTitle>
+              <DialogTitle>{t('editUser')}</DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

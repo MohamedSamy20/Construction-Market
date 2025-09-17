@@ -89,12 +89,20 @@ export async function getPendingRentals() {
   return api.get(`/api/Rentals/pending`, { auth: true });
 }
 
-export async function approveRental(id: number) {
+export async function getAllRentals() {
+  return api.get(`/api/Rentals/all`, { auth: true });
+}
+
+export async function approveRental(id: string) {
   return api.post(`/api/Rentals/${id}/approve`, {}, { auth: true });
 }
 
-export async function declineRental(id: number) {
+export async function declineRental(id: string) {
   return api.post(`/api/Rentals/${id}/decline`, {}, { auth: true });
+}
+
+export async function removeRentalAdmin(id: string) {
+  return api.del<void>(`/api/Rentals/${id}/remove`, { auth: true });
 }
 
 // Vendor utilities for notifications
