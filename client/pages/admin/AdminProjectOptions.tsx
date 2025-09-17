@@ -92,16 +92,16 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
   };
   const norm = (s?: string) => String(s || '').trim().toLowerCase();
 
-  const saveAll = async () => {
+  const saveAllWith = async (prodList: ProductCfg[]) => {
     try {
-      const catalog: Catalog = { products };
+      const catalog: Catalog = { products: prodList };
       const r = await setAdminOption('project_catalog', catalog);
       // Also sync legacy keys for compatibility with current builder
-      const types = products.map(p => ({ id: p.id, en: p.en, ar: p.ar }));
-      const materials = Array.from(new Set(products.flatMap(p => (p.materials||[]).map(m=>m.id))))
-        .map(id => ({ id, en: products.find(p=> (p.materials||[]).some(m=>m.id===id))?.materials?.find(m=>m.id===id)?.en, ar: products.find(p=> (p.materials||[]).some(m=>m.id===id))?.materials?.find(m=>m.id===id)?.ar }));
+      const types = prodList.map(p => ({ id: p.id, en: p.en, ar: p.ar }));
+      const materials = Array.from(new Set(prodList.flatMap(p => (p.materials||[]).map(m=>m.id))))
+        .map(id => ({ id, en: prodList.find(p=> (p.materials||[]).some(m=>m.id===id))?.materials?.find(m=>m.id===id)?.en, ar: prodList.find(p=> (p.materials||[]).some(m=>m.id===id))?.materials?.find(m=>m.id===id)?.ar }));
       const priceRules: Record<string, number> = {};
-      products.forEach(p => { if (Number.isFinite(p.basePricePerM2||0)) priceRules[p.id] = Number(p.basePricePerM2||0); });
+      prodList.forEach(p => { if (Number.isFinite(p.basePricePerM2||0)) priceRules[p.id] = Number(p.basePricePerM2||0); });
       await Promise.all([
         setAdminOption('project_types', types),
         setAdminOption('project_materials', materials),
@@ -128,6 +128,8 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
       toastError(isAr ? 'حدث خطأ أثناء الحفظ' : 'Failed to save', isAr);
     }
   };
+
+  const saveAll = async () => saveAllWith(products);
 
   const updateProduct = (idx: number, patch: Partial<ProductCfg>) => {
     setProducts(prev => {
@@ -158,29 +160,31 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
     setNpDraftSubtype({ id: '', ar: '', en: '' }); setNpDraftMaterial({ id: '', ar: '', en: '' }); setNpDraftColor({ id: '', ar: '', en: '' }); setNpDraftAccessory({ id: '', price: 0 });
   };
 
+  const applyAndSave = (compute: (prev: ProductCfg[]) => ProductCfg[]) => {
+    const next = compute(products);
+    setProducts(next);
+    setTimeout(() => { void saveAllWith(next); }, 0);
+  };
+
   const addLabeled = (pid: string, kind: 'subtypes'|'materials'|'colors', item: Labeled) => {
     if (!item.id) return;
-    setProducts(prev => prev.map(p => p.id!==pid ? p : { ...p, [kind]: [ ...(p[kind] as Labeled[] || []), { id: item.id.trim(), en: item.en, ar: item.ar } ] }));
-    // autosave after add for existing products
-    setTimeout(() => { saveAll(); }, 0);
+    applyAndSave(prev => prev.map(p => p.id!==pid ? p : { ...p, [kind]: [ ...(p[kind] as Labeled[] || []), { id: item.id.trim(), en: item.en, ar: item.ar } ] }));
   };
   const delLabeled = (pid: string, kind: 'subtypes'|'materials'|'colors', id: string) => {
-    setProducts(prev => prev.map(p => p.id!==pid ? p : { ...p, [kind]: (p[kind] as Labeled[] || []).filter(x=>x.id!==id) }));
-    // autosave after removal for existing products
-    setTimeout(() => { saveAll(); }, 0);
+    applyAndSave(prev => prev.map(p => p.id!==pid ? p : { ...p, [kind]: (p[kind] as Labeled[] || []).filter(x=>x.id!==id) }));
   };
   const addAccessory = (pid: string, acc: Accessory) => {
     const name = (acc.ar || acc.en || '').trim();
     if (!name) return;
-    const prod = products.find(x => x.id === pid);
     const genId = slugify(acc.en || acc.ar || '');
-    const id = genId || `acc-${((prod?.accessories||[]).length)+1}`;
-    setProducts(prev => prev.map(p => p.id!==pid ? p : { ...p, accessories: [ ...(p.accessories||[]), { id, en: acc.en, ar: acc.ar, price: Number(acc.price||0) } ] }));
-    setTimeout(() => { saveAll(); }, 0);
+    applyAndSave(prev => prev.map(p => {
+      if (p.id !== pid) return p;
+      const id = genId || `acc-${((p.accessories||[]).length)+1}`;
+      return { ...p, accessories: [ ...(p.accessories||[]), { id, en: acc.en, ar: acc.ar, price: Number(acc.price||0) } ] };
+    }));
   };
   const delAccessory = (pid: string, id: string) => {
-    setProducts(prev => prev.map(p => p.id!==pid ? p : { ...p, accessories: (p.accessories||[]).filter(x=>x.id!==id) }));
-    setTimeout(() => { saveAll(); }, 0);
+    applyAndSave(prev => prev.map(p => p.id!==pid ? p : { ...p, accessories: (p.accessories||[]).filter(x=>x.id!==id) }));
   };
 
   return (

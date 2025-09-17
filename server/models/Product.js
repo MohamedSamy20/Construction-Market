@@ -31,7 +31,7 @@ const productSchema = new mongoose.Schema({
   allowCustomDimensions: { type: Boolean, default: false },
   isAvailableForRent: { type: Boolean, default: false },
   rentPricePerDay: { type: Number, default: null },
-  isApproved: { type: Boolean, default: true },
+  isApproved: { type: Boolean, default: false },
   approvedAt: { type: Date },
   averageRating: { type: Number, default: null },
   reviewCount: { type: Number, default: 0 },
@@ -40,3 +40,4 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);
+

@@ -99,23 +99,27 @@ export async function getPendingProjects() {
   );
 }
 
-export async function approveProject(id: number, state: 'Published' | 'InBidding' = 'Published') {
-  return api.post(`/api/ProjectsAdmin/${id}/approve?state=${encodeURIComponent(state)}`, undefined, { auth: true });
+export async function approveProject(id: number | string, state: 'Published' | 'InBidding' = 'Published') {
+  const pid = encodeURIComponent(String(id));
+  return api.post(`/api/ProjectsAdmin/${pid}/approve?state=${encodeURIComponent(state)}`, undefined, { auth: true });
 }
 
-export async function rejectProject(id: number, reason?: string) {
-  return api.post(`/api/ProjectsAdmin/${id}/reject`, reason ?? '', { auth: true });
+export async function rejectProject(id: number | string, reason?: string) {
+  const pid = encodeURIComponent(String(id));
+  return api.post(`/api/ProjectsAdmin/${pid}/reject`, reason ?? '', { auth: true });
 }
 
 // Admin: get full project details by id
-export async function getAdminProjectById(id: number) {
-  return api.get(`/api/ProjectsAdmin/${id}`, { auth: true });
+export async function getAdminProjectById(id: number | string) {
+  const pid = encodeURIComponent(String(id));
+  return api.get(`/api/ProjectsAdmin/${pid}`, { auth: true });
 }
 
 // Admin: list bids for a project with merchant identity
-export async function getAdminProjectBids(id: number) {
+export async function getAdminProjectBids(id: number | string) {
+  const pid = encodeURIComponent(String(id));
   return api.get<{ success: boolean; items: Array<{ id: number; projectId: number; amount: number; estimatedDays: number; proposal: string; status: string; createdAt: string; merchantId: string; merchantName: string; merchantEmail: string }> }>(
-    `/api/ProjectsAdmin/${id}/bids`,
+    `/api/ProjectsAdmin/${pid}/bids`,
     { auth: true }
   );
 }
