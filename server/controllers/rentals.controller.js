@@ -40,6 +40,12 @@ export async function listPublic(req, res) {
   res.json(items);
 }
 
+// Admin: list all rentals (any status)
+export async function listAll(req, res) {
+  const items = await Rental.find({}).sort({ createdAt: -1 }).limit(500);
+  res.json(items);
+}
+
 export async function getById(req, res) {
   const r = await Rental.findById(req.params.id);
   if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
@@ -109,6 +115,33 @@ export async function update(req, res) {
 
 export async function remove(req, res) {
   const r = await Rental.findOneAndDelete({ _id: req.params.id, customerId: req.user._id });
+  if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
+  res.json({ success: true });
+}
+
+// Admin moderation endpoints
+export async function adminApprove(req, res) {
+  const r = await Rental.findByIdAndUpdate(
+    req.params.id,
+    { status: 'approved' },
+    { new: true }
+  );
+  if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
+  return res.json({ success: true });
+}
+
+export async function adminDecline(req, res) {
+  const r = await Rental.findByIdAndUpdate(
+    req.params.id,
+    { status: 'declined' },
+    { new: true }
+  );
+  if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
+  return res.json({ success: true });
+}
+
+export async function adminRemove(req, res) {
+  const r = await Rental.findByIdAndDelete(req.params.id);
   if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
   res.json({ success: true });
 }

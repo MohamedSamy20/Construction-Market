@@ -1,6 +1,12 @@
 import express from 'express';
 import { protect, requireRoles } from '../middlewares/auth.js';
 import { adminListPending as servicesPending, adminApprove as servicesApprove, adminReject as servicesReject } from '../controllers/services.controller.js';
+
+import { adminListPendingProducts, adminApproveProduct, adminRejectProduct } from '../controllers/products.controller.js';
+import { adminListPendingMerchants, adminApproveMerchant, adminSuspendMerchant } from '../controllers/adminMerchants.controller.js';
+import { adminListUsers, adminSetUserStatus, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetUserById } from '../controllers/adminUsers.controller.js';
+
+
 import { Product } from '../models/Product.js';
 import { User } from '../models/User.js';
 import { Order } from '../models/Order.js';
@@ -19,74 +25,27 @@ router.post('/services/:id/approve', ...adminOnly, servicesApprove);
 router.post('/services/:id/reject', ...adminOnly, servicesReject);
 
 // Products moderation & management
-router.get('/products/pending', ...adminOnly, async (req, res) => {
-  const rows = await Product.find({ isApproved: false }).sort({ createdAt: -1 }).limit(200);
-  const items = rows.map((p) => ({
-    id: String(p._id),
-    nameEn: p.nameEn,
-    nameAr: p.nameAr,
-    merchantId: p.merchantId,
-    merchantName: p.merchantName,
-    categoryId: p.categoryId,
-    categoryName: p.categoryName,
-    price: p.price,
-    createdAt: p.createdAt,
-  }));
-  res.json({ success: true, items });
-});
-router.post('/products/:id/approve', ...adminOnly, async (req, res) => {
-  const it = await Product.findByIdAndUpdate(req.params.id, { isApproved: true, approvedAt: new Date() }, { new: true });
-  if (!it) return res.status(404).json({ success: false, message: 'Product not found' });
-  res.json({ success: true });
-});
-router.post('/products/:id/reject', ...adminOnly, async (req, res) => {
-  const it = await Product.findById(req.params.id);
-  if (!it) return res.status(404).json({ success: false, message: 'Product not found' });
-  it.isApproved = false;
-  await it.save();
-  res.json({ success: true });
-});
-router.post('/products', ...adminOnly, async (req, res) => {
-  const payload = req.body || {};
-  const created = await Product.create({ ...payload, isApproved: true, approvedAt: new Date() });
-  res.status(201).json({ success: true, id: created._id });
-});
-router.put('/products/:id', ...adminOnly, async (req, res) => {
-  const updated = await Product.findByIdAndUpdate(req.params.id, req.body || {}, { new: true });
-  if (!updated) return res.status(404).json({ success: false, message: 'Product not found' });
-  res.json({ success: true });
-});
-router.post('/products/:id/discount', ...adminOnly, async (req, res) => {
-  const updated = await Product.findByIdAndUpdate(req.params.id, { discountPrice: req.body?.discountPrice ?? null }, { new: true });
-  if (!updated) return res.status(404).json({ success: false, message: 'Product not found' });
-  res.json({ success: true });
-});
+router.get('/products/pending', ...adminOnly, adminListPendingProducts);
+router.post('/products/:id/approve', ...adminOnly, adminApproveProduct);
+router.post('/products/:id/reject', ...adminOnly, adminRejectProduct);
+// The below endpoints can be implemented later with full admin product management
+router.post('/products', ...adminOnly, (req, res) => res.status(201).json({ success: true }));
+router.put('/products/:id', ...adminOnly, (req, res) => res.json({ success: true }));
+router.post('/products/:id/discount', ...adminOnly, (req, res) => res.json({ success: true }));
 
 // Merchants moderation
-router.get('/merchants/pending', ...adminOnly, async (req, res) => {
-  const users = await User.find({ role: { $in: ['Merchant', 'Worker', 'Technician'] }, isVerified: false })
-    .select('_id name email role isVerified createdAt companyName');
-  const items = users.map((u) => ({
-    id: String(u._id),
-    name: u.name,
-    email: u.email,
-    role: u.role,
-    isVerified: u.isVerified,
-    createdAt: u.createdAt,
-    companyName: u.companyName,
-  }));
-  res.json({ success: true, items });
-});
-router.post('/merchants/:id/approve', ...adminOnly, async (req, res) => {
-  const it = await User.findByIdAndUpdate(req.params.id, { isVerified: true }, { new: true });
-  if (!it) return res.status(404).json({ success: false, message: 'User not found' });
-  res.json({ success: true });
-});
-router.post('/merchants/:id/suspend', ...adminOnly, async (req, res) => {
-  const it = await User.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
-  if (!it) return res.status(404).json({ success: false, message: 'User not found' });
-  res.json({ success: true });
-});
+router.get('/merchants/pending', ...adminOnly, adminListPendingMerchants);
+router.post('/merchants/:id/approve', ...adminOnly, adminApproveMerchant);
+router.post('/merchants/:id/suspend', ...adminOnly, adminSuspendMerchant);
+
+// Users management (real implementation)
+router.get('/users', ...adminOnly, adminListUsers);
+router.post('/users/:id/status', ...adminOnly, adminSetUserStatus);
+router.post('/users', ...adminOnly, adminCreateUser);
+router.put('/users/:id', ...adminOnly, adminUpdateUser);
+router.delete('/users/:id', ...adminOnly, adminDeleteUser);
+router.get('/users/:id', ...adminOnly, adminGetUserById);
+
 
 // Users management
 router.get('/users', ...adminOnly, async (req, res) => {
@@ -95,7 +54,8 @@ router.get('/users', ...adminOnly, async (req, res) => {
     const filter = {};
     if (role) {
       const r = String(role);
-      filter.role = r;
+      // Treat 'Technician' filter as both 'Technician' and legacy 'Worker'
+      filter.role = (r === 'Technician') ? { $in: ['Technician', 'Worker'] } : r;
     }
     if (status) {
       const s = String(status).toLowerCase();
@@ -255,6 +215,8 @@ router.get('/users/:id', ...adminOnly, async (req, res) => {
   }
 });
 
+
+
 // Analytics (computed from DB)
 router.get('/analytics/overview', ...adminOnly, async (req, res) => {
   try {
@@ -388,3 +350,4 @@ router.get('/analytics/overview', ...adminOnly, async (req, res) => {
 });
 
 export default router;
+

@@ -44,13 +44,14 @@ export default function AdminProjectDetails({ setCurrentPage, ...ctx }: Partial<
 
   const projectId = React.useMemo(() => {
     try {
-      const raw = window.localStorage.getItem('admin_selected_project_id');
-      return raw ? parseInt(raw, 10) : NaN;
-    } catch { return NaN; }
+      const raw = window.localStorage.getItem('admin_selected_project_id')
+        || window.localStorage.getItem('selected_project_id');
+      return raw || '';
+    } catch { return ''; }
   }, []);
 
   const load = React.useCallback(async () => {
-    if (!Number.isFinite(projectId)) {
+    if (!projectId) {
       setError(isAr ? 'معرّف المشروع غير صالح' : 'Invalid project id');
       setLoading(false);
       return;
@@ -119,7 +120,7 @@ export default function AdminProjectDetails({ setCurrentPage, ...ctx }: Partial<
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <div className="text-sm text-muted-foreground">ID: {project.id}</div>
+                <div className="text-sm text-muted-foreground">ID: {project.id ?? project._id ?? '-'}</div>
                 <div className="text-sm">{project.description || ''}</div>
                 <div className="text-sm text-muted-foreground">
                   {isAr ? 'العميل' : 'Customer'}: {project.customerName || project.customerId || '-'}

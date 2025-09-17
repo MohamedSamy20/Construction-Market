@@ -9,11 +9,12 @@ import { Dialog } from '../../components/ui/dialog';
 import ProductForm from '../../components/vendor/ProductForm';
 import { Package, Search, Filter, Plus, Edit, Trash2, Store, Tag, ArrowRight, Clock } from 'lucide-react';
 import { useTranslation } from '../../hooks/useTranslation';
-import { getProducts, createProduct, updateProduct, deleteProduct, getAllCategories } from '@/services/products';
+import { getProducts, createProduct, updateProduct, deleteProduct, getAllCategories, getProductById } from '@/services/products';
 import { getPendingProducts, approveProduct as approveProductAdmin, rejectProduct as rejectProductAdmin } from '@/services/admin';
 
 interface ProductRow {
   id: number;
+  backendId?: string; // Mongo _id string
   name: string;
   sku: string;
   vendor: string;
@@ -31,6 +32,8 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
   // status filter disabled (no backend field). Keep UI minimal
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
+  const [selectedBackendId, setSelectedBackendId] = useState<string | null>(null);
+  const [productForEdit, setProductForEdit] = useState<any | undefined>(undefined);
   const [form, setForm] = useState<Partial<ProductRow>>({ name: '', sku: '', vendor: '', price: 0, stock: 0, notes: '' });
   const [pending, setPending] = useState<any[]>([]);
   const [pendingError, setPendingError] = useState<string | null>(null);
@@ -43,6 +46,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       try {
         const r = await getAllCategories();
         if (r.ok && Array.isArray(r.data)) {
+
           setCategories(r.data.map((c: any) => ({ id: c._id || c.id, name: (c.nameAr || c.nameEn || String(c._id || c.id)) })));
         } else { setCategories([]); }
       } catch { setCategories([]); }
@@ -54,6 +58,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       if (ok && data && Array.isArray((data as any).items)) {
         const backendRows: ProductRow[] = (data as any).items.map((p: any, idx: number) => ({
           id: Number(p.id) || Date.now() + idx,
+          backendId: String(p._id || p.id || ''),
           name: p.nameAr || p.nameEn || p.name || '',
           sku: p.partNumber || '',
           vendor: p.merchantName || p.brand || '',
@@ -89,8 +94,42 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
     return matches;
   });
 
-  const openCreate = () => { setEditId(null); setForm({ name: '', sku: '', vendor: '', price: 0, stock: 0, notes: '' }); setFormOpen(true); };
-  const openEdit = (r: ProductRow) => { setEditId(r.id); setForm({ ...r }); setFormOpen(true); };
+  const openCreate = () => { setEditId(null); setProductForEdit(undefined); setForm({ name: '', sku: '', vendor: '', price: 0, stock: 0, notes: '' }); setFormOpen(true); };
+  const openEdit = async (r: ProductRow) => {
+    setEditId(r.id);
+    setSelectedBackendId(String((r as any).backendId || r.id));
+    try {
+      const realId = String((r as any).backendId || r.id);
+      const getByIdAny = (getProductById as unknown as (id: any) => Promise<any>);
+      const resp = await getByIdAny(realId);
+      if (resp?.ok && resp.data) {
+        setProductForEdit(resp.data);
+      } else {
+        setProductForEdit({
+          id: realId,
+          nameAr: r.name,
+          nameEn: r.name,
+          price: r.price,
+          stock: r.stock,
+          partNumber: r.sku,
+          descriptionAr: '',
+          descriptionEn: '',
+        });
+      }
+    } catch {
+      setProductForEdit({
+        id: (r as any).backendId || r.id,
+        nameAr: r.name,
+        nameEn: r.name,
+        price: r.price,
+        stock: r.stock,
+        partNumber: r.sku,
+        descriptionAr: '',
+        descriptionEn: '',
+      });
+    }
+    setFormOpen(true);
+  };
 
   // Save handler for ProductForm: maps vendor form data to backend Create/Update DTO
   const onSaveProduct = async (data: any) => {
@@ -102,7 +141,10 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       nameEn: String(data.nameEn || ''),
       descriptionAr: String(data.descriptionAr || ''),
       descriptionEn: String(data.descriptionEn || ''),
-      categoryId: String(data.categoryId || ''),
+
+      // Send Mongo ObjectId as string
+      categoryId: data.categoryId ? String(data.categoryId) : undefined,
+
       price: original > 0 ? original : current,
       discountPrice: original > 0 ? current : null,
       stockQuantity: Number(data.stock || 0),
@@ -110,22 +152,25 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       isAvailableForRent: false,
       rentPricePerDay: null,
       attributes: [],
+      images: Array.isArray(data.images) ? data.images : (data.image ? [data.image] : []),
     };
     if (editId) {
-      await updateProduct(editId, payload);
+      const idToUpdate = selectedBackendId || String(editId);
+      await updateProduct(idToUpdate as any, payload);
     } else {
       await createProduct(payload);
     }
     setFormOpen(false); setEditId(null); await reload();
   };
 
-  const removeRow = async (r: ProductRow) => { await deleteProduct(r.id); await reload(); };
+  const removeRow = async (r: ProductRow) => { const realId = String((r as any).backendId || r.id); await deleteProduct(realId as any); await reload(); };
 
   const doApproveProduct = async (id: string) => {
-    try { const r = await approveProductAdmin(String(id)); if (r.ok) await reload(); } catch {}
+
+    try { const r = await approveProductAdmin(id); if (r.ok) await reload(); } catch {}
   };
   const doRejectProduct = async (id: string) => {
-    try { const r = await rejectProductAdmin(String(id), ''); if (r.ok) await reload(); } catch {}
+    try { const r = await rejectProductAdmin(id, ''); if (r.ok) await reload(); } catch {}
   };
 
   return (
@@ -228,20 +273,10 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
           </CardContent>
         </Card>
 
-        <Dialog open={formOpen} onOpenChange={(o: boolean)=>{ setFormOpen(o); if(!o) setEditId(null); }}>
+        <Dialog open={formOpen} onOpenChange={(o: boolean)=>{ setFormOpen(o); if(!o) { setEditId(null); setProductForEdit(undefined); } }}>
           {formOpen && (
             <ProductForm
-              product={editId ? {
-                id: editId,
-                nameAr: '',
-                nameEn: '',
-                price: form.price,
-                originalPrice: undefined,
-                stock: form.stock,
-                partNumber: form.sku,
-                descriptionAr: '',
-                descriptionEn: ''
-              } : undefined}
+              product={productForEdit}
               categories={categories}
               onSave={onSaveProduct}
               onCancel={() => setFormOpen(false)}
