@@ -1,12 +1,12 @@
 import express from 'express';
 import { protect, requireRoles } from '../middlewares/auth.js';
 import { adminListPending as servicesPending, adminApprove as servicesApprove, adminReject as servicesReject } from '../controllers/services.controller.js';
-<<<<<<< HEAD
+
 import { adminListPendingProducts, adminApproveProduct, adminRejectProduct } from '../controllers/products.controller.js';
 import { adminListPendingMerchants, adminApproveMerchant, adminSuspendMerchant } from '../controllers/adminMerchants.controller.js';
 import { adminListUsers, adminSetUserStatus, adminCreateUser, adminUpdateUser, adminDeleteUser, adminGetUserById } from '../controllers/adminUsers.controller.js';
 
-=======
+
 import { Product } from '../models/Product.js';
 import { User } from '../models/User.js';
 import { Order } from '../models/Order.js';
@@ -15,7 +15,7 @@ import { Project } from '../models/Project.js';
 import { Service } from '../models/Service.js';
 import { AdminOption } from '../models/AdminOption.js';
 import bcrypt from 'bcryptjs';
->>>>>>> 0346438 (update)
+
 
 const router = express.Router();
 const adminOnly = [protect, requireRoles('Admin')];
@@ -47,8 +47,7 @@ router.put('/users/:id', ...adminOnly, adminUpdateUser);
 router.delete('/users/:id', ...adminOnly, adminDeleteUser);
 router.get('/users/:id', ...adminOnly, adminGetUserById);
 
-<<<<<<< HEAD
-=======
+
 // Users management
 router.get('/users', ...adminOnly, async (req, res) => {
   try {
@@ -215,7 +214,7 @@ router.get('/users/:id', ...adminOnly, async (req, res) => {
     return res.status(500).json({ success: false, item: null, message: 'Failed to fetch user' });
   }
 });
->>>>>>> 0346438 (update)
+
 
 // Analytics (computed from DB)
 router.get('/analytics/overview', ...adminOnly, async (req, res) => {
