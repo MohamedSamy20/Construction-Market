@@ -11,12 +11,42 @@ export async function list(req, res) {
   if (req.query.vendorId) {
     q.vendorId = req.query.vendorId === 'me' ? req.user._id : req.query.vendorId;
   }
-  const items = await Service.find(q).sort({ createdAt: -1 }).limit(200);
+  const rows = await Service.find(q).sort({ createdAt: -1 }).limit(200);
+  const items = rows.map((s) => ({
+    id: String(s._id),
+    type: s.type,
+    dailyWage: s.dailyWage,
+    days: s.days,
+    total: s.total,
+    description: s.description,
+    vendorId: String(s.vendorId),
+    isApproved: s.isApproved,
+    status: s.status,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
   res.json(items);
 }
 
 export async function listPublic(req, res) {
-  const items = await Service.find({ isApproved: true, status: { $ne: 'Cancelled' } }).sort({ createdAt: -1 }).limit(200);
+  const rows = await Service.find({ isApproved: true, status: { $ne: 'Cancelled' } }).sort({ createdAt: -1 }).limit(200);
+  const items = rows.map((s) => ({
+    id: String(s._id),
+    type: s.type,
+    dailyWage: s.dailyWage,
+    days: s.days,
+    total: s.total,
+    description: s.description,
+    vendorId: String(s.vendorId),
+    isApproved: s.isApproved,
+    status: s.status,
+    startDate: s.startDate,
+    endDate: s.endDate,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }));
   res.json(items);
 }
 
