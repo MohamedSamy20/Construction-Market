@@ -74,6 +74,10 @@ const allowedOrigins = (() => {
 const corsOptions = {
   origin: (origin, cb) => {
     try {
+      // Emergency/temporary switch to allow all origins (reflect request origin)
+      if (String(process.env.ALLOW_ALL_ORIGINS || '').toLowerCase() === 'true') {
+        return cb(null, true);
+      }
       // Allow requests with no origin (e.g., mobile apps, curl, Postman)
       if (!origin) return cb(null, true);
 
