@@ -43,7 +43,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       try {
         const r = await getAllCategories();
         if (r.ok && Array.isArray(r.data)) {
-          setCategories(r.data.map((c: any) => ({ id: c.id, name: (c.nameAr || c.nameEn || String(c.id)) })));
+          setCategories(r.data.map((c: any) => ({ id: c._id || c.id, name: (c.nameAr || c.nameEn || String(c._id || c.id)) })));
         } else { setCategories([]); }
       } catch { setCategories([]); }
     })();
@@ -102,7 +102,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       nameEn: String(data.nameEn || ''),
       descriptionAr: String(data.descriptionAr || ''),
       descriptionEn: String(data.descriptionEn || ''),
-      categoryId: Number(data.categoryId || 0) || undefined,
+      categoryId: String(data.categoryId || ''),
       price: original > 0 ? original : current,
       discountPrice: original > 0 ? current : null,
       stockQuantity: Number(data.stock || 0),
@@ -121,11 +121,11 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
 
   const removeRow = async (r: ProductRow) => { await deleteProduct(r.id); await reload(); };
 
-  const doApproveProduct = async (id: number) => {
-    try { const r = await approveProductAdmin(id); if (r.ok) await reload(); } catch {}
+  const doApproveProduct = async (id: string) => {
+    try { const r = await approveProductAdmin(String(id)); if (r.ok) await reload(); } catch {}
   };
-  const doRejectProduct = async (id: number) => {
-    try { const r = await rejectProductAdmin(id, ''); if (r.ok) await reload(); } catch {}
+  const doRejectProduct = async (id: string) => {
+    try { const r = await rejectProductAdmin(String(id), ''); if (r.ok) await reload(); } catch {}
   };
 
   return (
@@ -167,14 +167,14 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
             {pendingError && <div className="text-sm text-red-600 mb-2">{pendingError}</div>}
             <div className="space-y-3">
               {pending.map((p: any) => (
-                <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                <div key={String(p.id)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
                   <div>
                     <div className="font-medium text-sm">{p.nameAr || p.nameEn || p.name}</div>
                     <div className="text-xs text-muted-foreground">التاجر: {p.merchantName || p.merchantId}</div>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => doApproveProduct(Number(p.id))}>اعتماد</Button>
-                    <Button size="sm" variant="outline" onClick={() => doRejectProduct(Number(p.id))}>رفض</Button>
+                    <Button size="sm" variant="outline" onClick={() => doApproveProduct(String(p.id))}>اعتماد</Button>
+                    <Button size="sm" variant="outline" onClick={() => doRejectProduct(String(p.id))}>رفض</Button>
                   </div>
                 </div>
               ))}

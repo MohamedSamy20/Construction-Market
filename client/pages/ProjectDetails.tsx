@@ -60,20 +60,27 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
   const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
   const [myProposal, setMyProposal] = useState<BidDto | null>(null);
 
-  // Load selected project by id: backend first, then localStorage fallback
+  // Load selected project by id: URL ?id= first, then localStorage fallback
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         if (typeof window === 'undefined') return;
-        const id = localStorage.getItem('selected_project_id');
+        let id: string | null = null;
+        try {
+          const url = new URL(window.location.href);
+          id = url.searchParams.get('id');
+        } catch {}
+        if (!id) {
+          try { id = localStorage.getItem('selected_project_id'); } catch {}
+        }
         if (!id) { setLoading(false); return; }
         // Load from backend only (use admin endpoint for admins)
         try {
           const isAdmin = ((rest as any)?.user?.role === 'admin');
           const resp = isAdmin
             ? await getAdminProjectById(Number(id))
-            : await getProjectById(Number(id));
+            : await getProjectById(String(id));
           const ok = (resp as any).ok;
           const data = (resp as any).data;
           if (!cancelled && ok && data) {
@@ -87,9 +94,11 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
         } catch {}
         // Load bids (merchant proposals) from backend
         try {
-          const pid = Number(localStorage.getItem('selected_project_id') || '0');
-          if (pid) {
-            const r = await getProjectBids(pid);
+          // Prefer same id used to fetch project
+          const pidStr = String(id || localStorage.getItem('selected_project_id') || '');
+
+          if (pidStr) {
+            const r = await getProjectBids(pidStr);
             if (!cancelled && r.ok && Array.isArray(r.data)) {
               const mapped = (r.data as any[]).map((b:any) => {
                 // Normalize status from server enum names to UI statuses
@@ -740,9 +749,9 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
                                     if (!project) return;
                                     const vP = Number(offerPrice);
                                     const vD = Number(offerDays);
-                                    const res = await createBid(Number(project.id), { price: vP, days: vD, message: offerMessage });
+                                    const res = await createBid(String(project.id), { price: vP, days: vD, message: offerMessage });
                                     if (res.ok) {
-                                      const r = await getProjectBids(Number(project.id));
+                                      const r = await getProjectBids(String(project.id));
                                       if (r.ok && Array.isArray(r.data)) setProposals(r.data as BidDto[]);
                                       setOfferPrice(''); setOfferDays(''); setOfferMessage('');
                                       setHasSubmitted(true);
@@ -799,9 +808,9 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
                               <div className="mt-2 flex items-center gap-2">
                                 <Button size="sm" className="flex-1" onClick={async () => {
                                   try {
-                                    const r = await acceptBid(Number(pp.id));
+                                    const r = await acceptBid(String(pp.id));
                                     if (r.ok && project) {
-                                      const rd = await getProjectBids(Number(project.id));
+                                      const rd = await getProjectBids(String(project.id));
                                       if (rd.ok && Array.isArray(rd.data)) setProposals(rd.data as BidDto[]);
                                     }
                                   } catch {}
@@ -814,9 +823,9 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
                                   className="flex-1 bg-red-600 hover:bg-red-700 text-white border border-red-600"
                                   onClick={async () => {
                                     try {
-                                      const r = await rejectBid(Number(pp.id));
+                                      const r = await rejectBid(String(pp.id));
                                       if (r.ok && project) {
-                                        const rd = await getProjectBids(Number(project.id));
+                                        const rd = await getProjectBids(String(project.id));
                                         if (rd.ok && Array.isArray(rd.data)) setProposals(rd.data as BidDto[]);
                                       }
                                     } catch {}

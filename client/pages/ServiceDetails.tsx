@@ -69,9 +69,9 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
         }
         // Load technician offers (proposals) for this service from backend if we have a service id
         try {
-          const sid = id ? Number(id) : (service as any)?.id ? Number((service as any).id) : null;
+          const sid = id ?? ((service as any)?.id ? String((service as any).id) : null);
           if (sid != null) {
-            const r = await listOffersForService(Number(sid));
+            const r = await listOffersForService(String(sid));
             if (!cancelled && r.ok && Array.isArray(r.data)) setProposals(r.data as OfferDto[]);
           }
         } catch {}
@@ -227,7 +227,7 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
                           <div className="mt-2 flex items-center gap-2">
                             <Button size="sm" className="flex-1" onClick={async () => {
                               try {
-                                const r = await updateOfferStatus(Number(pp.id), 'accepted');
+                                const r = await updateOfferStatus(String(pp.id), 'accepted');
                                 if (r.ok) {
                                   setProposals(prev => prev.map(x => x.id===pp.id ? { ...x, status: 'accepted' } as any : x));
                                 }
@@ -237,7 +237,7 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
                             </Button>
                             <Button size="sm" variant="destructive" className="flex-1 bg-red-600 hover:bg-red-700 text-white border border-red-600" onClick={async () => {
                               try {
-                                const r = await updateOfferStatus(Number(pp.id), 'rejected');
+                                const r = await updateOfferStatus(String(pp.id), 'rejected');
                                 if (r.ok) {
                                   setProposals(prev => prev.map(x => x.id===pp.id ? { ...x, status: 'rejected' } as any : x));
                                 }

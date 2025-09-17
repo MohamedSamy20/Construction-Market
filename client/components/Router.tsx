@@ -111,6 +111,7 @@ export default function Router() {
   // Auth check states
   const [sessionChecked, setSessionChecked] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [verificationRecheckedAt, setVerificationRecheckedAt] = useState<number>(0);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   
@@ -332,6 +333,16 @@ export default function Router() {
 
   // Navigation wrapper: push current page to history, update prevPage, then navigate
   const navigate = (page: string) => {
+    // Pre-navigation guard: block unverified vendors from vendor routes
+    try {
+      const targetRoute = routes[page as keyof typeof routes];
+      const wantsVendor = !!(targetRoute && targetRoute.allowedRoles && targetRoute.allowedRoles.includes('vendor'));
+      if (wantsVendor && user && user.role === 'vendor' && user.isVerified === false) {
+        const isAr = typeof window !== 'undefined' && (document?.documentElement?.dir === 'rtl');
+        toastInfo(isAr ? 'انتظر موافقة الادمن' : 'Please wait for admin approval', isAr);
+        return; // Do NOT navigate
+      }
+    } catch {}
     setHistory((h) => [...h, currentPage]);
     setPrevPage(currentPage);
     setCurrentPage(page);
@@ -462,6 +473,11 @@ export default function Router() {
         } else {
           url.searchParams.delete("page");
         }
+        // Clean up page-specific params so they don't leak into other pages
+        const needsServiceId = currentPage === 'technician-service-details';
+        const needsProjectId = currentPage === 'technician-project-details';
+        if (!needsServiceId) url.searchParams.delete('serviceId');
+        if (!needsProjectId) url.searchParams.delete('projectId');
         window.history.replaceState({}, "", url.toString());
       } catch {
         // no-op
@@ -502,14 +518,47 @@ export default function Router() {
       const protectedVendor = allowed.includes('vendor' as any) && user.role === 'vendor';
       const protectedWorker = allowed.includes('worker' as any) && user.role === 'worker';
       if ((protectedVendor || protectedWorker) && user.isVerified === false) {
-        const isAr = typeof window !== 'undefined' && (document?.documentElement?.dir === 'rtl');
-        toastInfo(
-          isAr
-            ? 'حسابك قيد المراجعة من الإدارة. لا يمكنك الوصول إلى لوحة التحكم حتى تتم الموافقة. يرجى الانتظار من 24 إلى 48 ساعة.'
-            : 'Your account is pending admin approval. You cannot access the dashboard until approved. Please wait 24 to 48 hours.',
-          isAr
-        );
-        setCurrentPage('home');
+        // Before blocking, re-check profile once to pick up latest approval state
+        const now = Date.now();
+        const recentlyChecked = now - verificationRecheckedAt < 1500; // 1.5s throttle
+        if (!recentlyChecked) {
+          (async () => {
+            try {
+              const r = await getProfile();
+              if (r.ok && r.data) {
+                const roleMap: Record<string, UserRole> = { Admin: 'admin', Merchant: 'vendor', Technician: 'worker', Customer: 'customer', Worker: 'worker' };
+                const arr = ((r.data as any).roles || []) as string[];
+                const firstRole = Array.isArray(arr) && arr.length > 0 ? arr[0] : (r.data as any).role;
+                const first = (r.data as any).firstName || '';
+                const mid = (r.data as any).middleName || '';
+                const last = (r.data as any).lastName || '';
+                const name = (r.data as any).name || `${first}${mid? ' ' + mid : ''}${(first||mid)&&last?' ':''}${last}`.trim();
+                const refreshed: User = {
+                  id: String((r.data as any).id || ''),
+                  name: String(name || ''),
+                  email: String((r.data as any).email || ''),
+                  role: roleMap[String(firstRole || '')] || 'customer',
+                  phone: (r.data as any).phoneNumber || (r.data as any).phone,
+                  firstName: first || undefined,
+                  middleName: mid || undefined,
+                  lastName: last || undefined,
+                  isVerified: Boolean((r.data as any).isVerified),
+                };
+                setUser(refreshed);
+              }
+            } catch {}
+            setVerificationRecheckedAt(Date.now());
+          })();
+        } else {
+          const isAr = typeof window !== 'undefined' && (document?.documentElement?.dir === 'rtl');
+          toastInfo(
+            isAr
+              ? 'انتظر موافقة الادمن'
+              : 'Please wait for admin approval',
+            isAr
+          );
+          setCurrentPage('home');
+        }
       }
     }
   }, [currentPage, user, sessionChecked]);

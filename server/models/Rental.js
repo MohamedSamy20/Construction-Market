@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const rentalSchema = new mongoose.Schema({
-  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: false },
   productName: { type: String },
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   startDate: { type: Date, required: true },
@@ -11,6 +11,7 @@ const rentalSchema = new mongoose.Schema({
   totalAmount: { type: Number, default: 0 },
   status: { type: String, default: 'pending' },
   currency: { type: String, default: 'SAR' },
+  imageUrl: { type: String },
 }, { timestamps: true });
 
 export const Rental = mongoose.models.Rental || mongoose.model('Rental', rentalSchema);

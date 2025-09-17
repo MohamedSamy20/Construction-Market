@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
+import { toastInfo, toastSuccess } from "../../utils/alerts";
 import Header from "../../components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -140,7 +141,7 @@ export default function TechnicianProjects({ setCurrentPage, ...context }: Props
                       disabled={submittedProjects.has(String(p.id))}
                       onClick={() => {
                         if (submittedProjects.has(String(p.id))) {
-                          Swal.fire({ icon: 'info', title: isAr ? 'تم الإرسال مسبقاً' : 'Already Submitted', text: isAr ? 'لا يمكنك إرسال عرض آخر لهذا المشروع.' : 'You have already submitted a proposal for this project.' });
+                          toastInfo(isAr ? 'تم الإرسال مسبقاً لهذا المشروع' : 'Already submitted for this project', isAr);
                           return;
                         }
                         setSelectedProject(p);
@@ -211,7 +212,7 @@ export default function TechnicianProjects({ setCurrentPage, ...context }: Props
               onClick={() => {
                 if (!selectedProject) return;
                 if (submittedProjects.has(String(selectedProject.id))) {
-                  Swal.fire({ icon: 'info', title: isAr ? 'تم الإرسال مسبقاً' : 'Already Submitted', text: isAr ? 'لا يمكنك إرسال عرض آخر لهذا المشروع.' : 'You have already submitted a proposal for this project.' });
+                  toastInfo(isAr ? 'تم الإرسال مسبقاً لهذا المشروع' : 'Already submitted for this project', isAr);
                   return;
                 }
                 (async () => {
@@ -227,7 +228,7 @@ export default function TechnicianProjects({ setCurrentPage, ...context }: Props
                         }
                       } catch {}
                       setProposalOpen(false);
-                      Swal.fire({ icon: 'success', title: isAr ? 'تم إرسال العرض' : 'Proposal submitted', timer: 1800, showConfirmButton: false });
+                      toastSuccess(isAr ? 'تم إرسال العرض' : 'Proposal submitted', isAr);
                     }
                   } finally {
                     setSaving(false);

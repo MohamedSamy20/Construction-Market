@@ -15,28 +15,28 @@ export const faqsEn = [
     id: 1,
     category: 'general',
     question: 'What is Al Aaref platform?',
-    answer: 'Al Aaref is an online store specialized in selling original and high-quality alternative auto parts. We connect customers with specialized vendors to offer the best products at competitive prices.',
+    answer: 'Al Aaref is an online platform specialized in construction services and products. We connect customers with specialized vendors and contractors to offer the best quality at competitive prices.',
     popular: true
   },
   {
     id: 2,
     category: 'general',
-    question: 'How can I find the right part for my car?',
-    answer: 'You can search by part number, car type, or browse categories. You can also use the car filter to show only parts compatible with your vehicle.',
+    question: 'How can I find the right service or product?',
+    answer: 'You can search by service name, category, or browse the available sections. You can also use filters to show only relevant options for your project.',
     popular: true
   },
   {
     id: 3,
     category: 'general',
-    question: 'Are all listed parts original?',
-    answer: 'We offer a mix of original and high-quality alternative parts. Each product clearly indicates its type, and we guarantee the quality of all alternative parts we sell.',
+    question: 'Are the listed services and materials certified?',
+    answer: 'We offer certified services and high-quality materials. Each listing clearly indicates specifications and standards, and we stand behind the quality provided by our partners.',
     popular: false
   },
   {
     id: 4,
     category: 'general',
-    question: 'Can I request a part that is not listed on the website?',
-    answer: 'Yes. Contact our customer service and we will search for the requested part through our supplier network.',
+    question: 'Can I request a service or product that is not listed?',
+    answer: 'Yes. Contact our customer service and we will source the requested service or product through our network of suppliers and contractors.',
     popular: false
   },
 

@@ -6,7 +6,8 @@ import multer from 'multer';
 
 const router = express.Router();
 const storage = multer.memoryStorage();
-const maxFileSize = 10 * 1024 * 1024; // 10MB per file
+const maxMb = Number(process.env.UPLOAD_MAX_FILE_MB || 15);
+const maxFileSize = Math.max(1, isFinite(maxMb) ? maxMb : 15) * 1024 * 1024; // default 15MB per file
 const allowed = (process.env.ALLOWED_EXTENSIONS || '.jpg,.jpeg,.png,.gif,.pdf,.doc,.docx')
   .split(',').map((s) => s.trim().toLowerCase());
 const upload = multer({

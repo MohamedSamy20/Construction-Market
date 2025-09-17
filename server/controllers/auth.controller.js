@@ -140,10 +140,16 @@ export async function register(req, res) {
     });
 
     const token = signToken({ id: user._id, role: user.role });
-    return res.status(201).json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    return res.status(201).json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, isVerified: user.isVerified } });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: 'Registration failed' });
+    console.error('[register] error:', err);
+    // Duplicate key (email unique)
+    if ((err && (err.code === 11000 || err.code === '11000')) || /duplicate key/i.test(String(err?.message || ''))) {
+      return res.status(409).json({ success: false, message: 'Email already registered' });
+    }
+    // Validation-like messages
+    const devMsg = process.env.NODE_ENV !== 'production' ? (err?.message || 'Registration failed') : 'Registration failed';
+    return res.status(500).json({ success: false, message: devMsg });
   }
 }
 
@@ -152,10 +158,14 @@ export async function login(req, res) {
     const { email, password } = req.body;
     const user = await User.findOne({ email: String(email || '').toLowerCase() });
     if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    // Some legacy/test users may have been created without a password hash; guard against that
+    if (!user.password || typeof user.password !== 'string') {
+      return res.status(400).json({ success: false, message: 'Password not set for this account. Please reset your password.' });
+    }
     const ok = await bcrypt.compare(String(password || ''), user.password);
     if (!ok) return res.status(401).json({ success: false, message: 'Invalid credentials' });
     const token = signToken({ id: user._id, role: user.role });
-    return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
+    return res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role, isVerified: user.isVerified } });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ success: false, message: 'Login failed' });
@@ -181,6 +191,7 @@ export async function profile(req, res) {
     streetName: req.user.streetName || '',
     email: req.user.email,
     role: req.user.role,
+    isVerified: !!req.user.isVerified,
     phone: req.user.phoneNumber || '',
     phoneSecondary: req.user.phoneSecondary || '',
     birthdate: req.user.dateOfBirth ? new Date(req.user.dateOfBirth).toISOString() : '',
@@ -270,8 +281,23 @@ export async function forgotPassword(req, res) {
 }
 
 export async function resetPassword(req, res) {
-  // Placeholder: accept token and set new password
-  return res.json({ success: true });
+  try {
+    const { email, newPassword } = req.body || {};
+    const em = String(email || '').toLowerCase();
+    if (!em || !newPassword) {
+      return res.status(400).json({ success: false, message: 'email and newPassword are required' });
+    }
+    const user = await User.findOne({ email: em });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    await user.save();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Reset failed' });
+  }
 }
 
 export async function deleteAccount(req, res) {

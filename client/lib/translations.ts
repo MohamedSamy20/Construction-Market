@@ -25,10 +25,10 @@ export const translations = {
     total: "المجموع",
 
     // Homepage
-    heroTitle: "أفضل قطع غيار السيارات في المملكة",
+    heroTitle: "أفضل خدمات ومنتجات المقاولات في المملكة",
     heroSubtitle:
-      "اكتشف مجموعة واسعة من قطع الغيار الأصلية والبديلة بأفضل الأسعار",
-    searchPlaceholder: "ابحث عن قطع الغيار...",
+      "اكتشف مجموعة واسعة من خدمات ومنتجات المقاولات بأفضل الأسعار",
+    searchPlaceholder: "ابحث في خدمات ومنتجات المقاولات...",
     bestSelling: "الأكثر مبيعاً",
     featuredProducts: "المنتجات المميزة",
     whyChooseUs: "لماذا تختارنا",
@@ -65,7 +65,7 @@ export const translations = {
 
     // Footer
     footerDescription:
-      "منصة شاملة لبيع وشراء قطع غيار السيارات في المملكة العربية السعودية",
+      "منصة شاملة لخدمات ومنتجات المقاولات في المملكة العربية السعودية",
     quickLinks: "روابط سريعة",
     customerService: "خدمة العملاء",
     followUs: "تابعنا",
@@ -79,15 +79,15 @@ export const translations = {
     model: "الموديل",
     partCategory: "فئة القطعة",
     workshopBackground: "خلفية ورشة السيارات",
-    discoverBestOffers: "اكتشف أفضل العروض على قطع غيار السيارات عالية الجودة",
+    discoverBestOffers: "اكتشف أفضل العروض على خدمات ومنتجات المقاولات عالية الجودة",
 
     // Brand name and app info
     brandName: "العارف",
-    brandSubtitle: "قطع غيار السيارات",
+    brandSubtitle: "متجر مقاولات",
     welcomeMessage: "مرحباً بك في العارف",
-    tagline: "أكبر متجر لقطع غيار السيارات في المملكة",
+    tagline: "أكبر متجر مقاولات في المملكة",
     features: "جودة عالية • أسعار منافسة • خدمة سريعة",
-    searchPrompt: "ابحث عن قطعة الغيار التي تحتاجها",
+    searchPrompt: "ابحث عن الخدمة أو المنتج الذي تحتاجه",
     advancedSearch: "بحث متقدم",
 
     // Product form labels
@@ -150,7 +150,7 @@ export const translations = {
 
     // Copyright
     copyright: "جميع الحقوق محفوظة",
-    companyFullName: "العارف لقطع غيار السيارات",
+    companyFullName: "العارف للمقاولات",
 
     // Car brands
     toyota: "تويوتا",
@@ -160,7 +160,7 @@ export const translations = {
     bmw: "بي إم دبليو",
 
     // Product categories
-    engineParts: "قطع غيار المحركات",
+    engineParts: "أعمال المحركات",
     tiresWheels: "الإطارات والعجلات",
     electricalParts: "قطع الكهرباء",
     workshopTools: "أدوات الورش",
@@ -173,12 +173,12 @@ export const translations = {
 
     // Homepage - hero/search
     welcomeToAlAref: "مرحبًا بك في العارف",
-    largestStore: "أكبر متجر لقطع غيار السيارات",
+    largestStore: "أكبر متجر مقاولات",
     qualityPricesService: "جودة عالية • أسعار مناسبة • خدمة متميزة",
     searchForPart: "ابحث عن قطعة الغيار",
 
     // Homepage - categories section
-    categoryDescription: "استكشف أبرز فئات قطع الغيار لدينا",
+    categoryDescription: "استكشف أبرز فئات خدمات ومنتجات المقاولات لدينا",
     enginePartsTitle: "قطع غيار المحركات",
     enginePartsDesc: "محركات، مكابس، حلقات، وجميع قطع المحرك",
     tiresWheelsTitle: "الإطارات والعجلات",
@@ -207,9 +207,9 @@ export const translations = {
     fastService: "خدمة سريعة",
     fastServiceDesc: "معالجة الطلبات في أقل من 24 ساعة",
     experience15: "خبرة 15 سنة",
-    experienceDesc: "خبرة طويلة في مجال قطع الغيار",
+    experienceDesc: "خبرة طويلة في مجال المقاولات",
     whyChooseUsDesc:
-      "نقدم لك أفضل تجربة تسوق لقطع غيار السيارات مع مميزات استثنائية",
+      "نقدم لك أفضل تجربة في مجال المقاولات مع مميزات استثنائية",
 
     // Statistics
     satisfiedCustomer: "عميل راضي",
@@ -317,9 +317,9 @@ export const translations = {
     securityPrivacy: "الأمان والخصوصية",
 
     // Header specific
-    specialOffer: "عرض خاص: خصم 20% على جميع قطع غيار المحركات",
+    specialOffer: "عرض خاص: خصم 20% على خدمات المقاولات",
     brandLogo: "شعار العارف",
-    autoPartsSubtitle: "قطع غيار السيارات",
+    autoPartsSubtitle: "المقاولات",
 
     // Newsletter specific
 
@@ -348,10 +348,10 @@ export const translations = {
     enginePartsOfferTitle: "أجزاء المحرك",
     electricalPartsOfferTitle: "الإضاءة",
     batteries: "البطاريات",
-    generalParts: "قطع غيار عامة",
+    generalParts: "خدمات مقاولات عامة",
     maintenanceBundles: "حزم الصيانة",
     winterOfferTitle: "عرض الشتاء الكبير",
-    winterOfferDesc: "خصم يصل إلى 50% على جميع قطع غيار الشتاء",
+    winterOfferDesc: "خصم يصل إلى 50% على خدمات الشتاء",
     michelinTiresTitle: "إطارات ميشلين بريميوم",
     michelinTiresDesc: "اشتر 3 إطارات واحصل على الرابع مجاناً",
     maintenanceBundleTitle: "حزمة الصيانة الشاملة",
@@ -752,17 +752,17 @@ export const translations = {
     fullName: "Full Name",
 
     // Homepage
-    heroTitle: "Best Auto Parts in Saudi Arabia",
+    heroTitle: "Best Construction Services and Products in Saudi Arabia",
     heroSubtitle:
-      "Discover a wide range of original and alternative auto parts at the best prices",
-    searchPlaceholder: "Search for auto parts...",
+      "Discover a wide range of construction services and products at the best prices",
+    searchPlaceholder: "Search construction services and products...",
     bestSelling: "Best Selling",
     bestSellingTitle: "Best Sellers",
     bestSellingDescription: "Discover our most popular products",
     viewAllProducts: "View All Products",
     featuredProducts: "Featured Products",
     whyChooseUs: "Why Choose Us",
-    whyChooseUsDesc: "We provide you the best auto parts shopping experience with exceptional features",
+    whyChooseUsDesc: "We provide you the best construction experience with exceptional features",
     freeShipping: "Free Shipping",
     freeShippingDesc: "Free shipping for orders over 200 SAR",
     originalParts: "Original Parts",
@@ -774,7 +774,7 @@ export const translations = {
     fastService: "Fast Service",
     fastServiceDesc: "Orders processed in less than 24 hours",
     experience15: "15 Years Experience",
-    experienceDesc: "Long experience in the auto parts field",
+    experienceDesc: "Long experience in the construction field",
     qualityGuarantee: "Quality Guarantee",
     fastDelivery: "Fast Delivery",
     bestPrices: "Best Prices",
@@ -782,7 +782,7 @@ export const translations = {
     // HeroSearch specific (ensure English for hero area)
     welcomeToAlAaref: "Welcome to Al Aaref",
     welcomeToAlAref: "Welcome to Al Aaref",
-    largestStore: "Largest auto parts store in the Kingdom",
+    largestStore: "Largest construction store in the Kingdom",
     qualityPricesService: "High Quality • Competitive Prices • Fast Service",
     searchForPart: "Search for the part you need",
 
@@ -817,7 +817,7 @@ export const translations = {
     workshopToolsTitle: "Workshop Tools",
     workshopToolsDesc: "Hand tools, machines, and all maintenance tools",
     categoryDescription:
-      "Discover our wide range of auto parts organized into easy-to-browse sections",
+      "Discover our wide range of construction services and products organized into easy-to-browse sections",
     productsCount2500: "2,500+ products",
     productsCount1800: "1,800+ products",
     productsCount1200: "1,200+ products",
@@ -888,7 +888,7 @@ export const translations = {
 
     // Footer
     footerDescription:
-      "Comprehensive platform for buying and selling auto spare parts in Saudi Arabia",
+      "Comprehensive platform for construction services and products in Saudi Arabia",
     quickLinks: "Quick Links",
     customerService: "Customer Service",
     followUs: "Follow Us",
@@ -913,7 +913,7 @@ export const translations = {
     workingHoursWeekend: "Friday - Saturday: 2PM - 10PM",
     siteMap: "Site Map",
     // Company and store
-    companyFullName: "Al Aaref Auto Parts",
+    companyFullName: "Al Aaref Construction",
     storeDescription: "Store description",
     email: "Email",
 
@@ -923,13 +923,13 @@ export const translations = {
     partCategory: "Part Category",
     workshopBackground: "Workshop Background",
     discoverBestOffers:
-      "Discover the best offers on high-quality auto spare parts",
+      "Discover the best offers on high-quality construction services and products",
 
     // Brand name and app info
     brandName: "Al Aaref",
-    brandSubtitle: "Auto Parts",
+    brandSubtitle: "Construction",
     welcomeMessage: "Welcome to Al Aaref",
-    tagline: "Largest auto parts store in the Kingdom",
+    tagline: "Largest construction store in the Kingdom",
     features: "High Quality • Competitive Prices • Fast Service",
     
     // Offers page
@@ -942,13 +942,13 @@ export const translations = {
     loyaltyProgram: "Loyalty Program",
     seasonalOffers: "Seasonal Offers",
     winterOfferTitle: "Big Winter Sale",
-    winterOfferDesc: "Up to 50% off on all winter spare parts",
+    winterOfferDesc: "Up to 50% off on winter services",
     michelinTiresTitle: "Michelin Tires Offer",
     michelinTiresDesc: "Premium tires with 25% discount",
     maintenanceBundleTitle: "Maintenance Bundle",
     maintenanceBundleDesc: "Save more with complete service bundles",
     daysLeft: "days left",
-    generalParts: "General Parts",
+    generalParts: "General Construction Services",
     batteries: "Batteries",
     maintenanceBundles: "Maintenance Bundles",
     oilFilterKN: "K&N Oil Filter",
@@ -996,7 +996,7 @@ export const translations = {
     addressMap: "Al Aaref Headquarters, Riyadh",
     faqQuickHint: "Find quick answers to popular questions",
     supportTeamHint: "Our support team is ready to help you 24/7",
-    searchPrompt: "Search for the auto part you need",
+    searchPrompt: "Search for the service or product you need",
     advancedSearch: "Advanced Search",
     
     // Product Listing / Filters
@@ -1103,6 +1103,12 @@ export const translations = {
     visitorsToCustomers: "Visitors to Customers",
     completePurchase: "Complete Purchase",
     averageOrderValue: "Average Order Value",
+    // Vendor Dashboard specific
+    vendorFunctions: "Vendor Functions",
+    totalProducts: "Total Products",
+    newOrders: "New Orders",
+    storeRating: "Store Rating",
+    vaTotal: "Total",
 
     // Admin Settings page
     adminSettingsSubtitle: "Manage global system configuration and behavior.",
@@ -1252,9 +1258,7 @@ export const translations = {
     deliveredStatus: "Delivered",
     shippedStatus: "Shipped",
     pendingOrderStatus: "Pending",
-    totalProducts: "Total Products",
-    newOrders: "New Orders",
-    storeRating: "Store Rating",
+    // removed duplicates of totalProducts/newOrders/storeRating (defined earlier)
     changeUpThisMonth: "+12 this month",
     changeUpToday: "+5 today",
     changeRatingThisMonth: "+0.2 this month",

@@ -226,18 +226,22 @@ export default function TechnicianServiceDetails({ setCurrentPage, ...context }:
                     onClick={async ()=>{
                       try {
                         if (!service?.id) return;
-                        // Technician tries to open conversation by service if exists
-                        const r = await getConversationByService(Number(service.id));
+                        const sid = String(service.id);
+                        // Technicians cannot start a conversation. Only open if vendor already created it.
+                        const r = await getConversationByService(sid);
                         if (r.ok && (r.data as any)?.id) {
                           try { window.localStorage.setItem('chat_conversation_id', String((r.data as any).id)); } catch {}
-                          try { window.localStorage.setItem('chat_service_id', String(service.id)); } catch {}
-                          // open technician chat page
+                          try { window.localStorage.setItem('chat_service_id', sid); } catch {}
                           setCurrentPage && setCurrentPage('technician-chat');
                         } else {
-                          // No conversation yet; inform technician
-                          toastInfo(isAr ? 'لا توجد محادثة بعد. سيظهر زر المراسلة بعد أن يبدأ التاجر المحادثة.' : 'No conversation yet. The chat will be available once the vendor starts it.', isAr);
+                          toastInfo(isAr ? 'لا يمكنك بدء المحادثة. يجب أن يبدأ التاجر أول رسالة.' : 'You cannot start the chat. The vendor must send the first message.', isAr);
                         }
-                      } catch {}
+                      } catch (e:any) {
+                        if (e?.status === 401) {
+                          toastInfo(isAr ? 'الرجاء تسجيل الدخول للتمكن من المراسلة.' : 'Please login to send messages.', isAr);
+                          setCurrentPage && setCurrentPage('login');
+                        }
+                      }
                     }}
                   >
                     {isAr ? 'مراسلة التاجر' : 'Message Vendor'}
@@ -386,7 +390,7 @@ export default function TechnicianServiceDetails({ setCurrentPage, ...context }:
                       try {
                         setSaving(true);
                         if (isEditing && myOffer && myOffer.id) {
-                          const up = await updateOffer(Number(myOffer.id), { targetType: 'service', serviceId: Number(service.id), price: priceNum, days: daysNum, message: offerMessage || '' });
+                          const up = await updateOffer(String(myOffer.id), { targetType: 'service', serviceId: String(service.id), price: priceNum, days: daysNum, message: offerMessage || '' });
                           if (up.ok) {
                             setIsEditing(false);
                             // refresh offers
@@ -399,7 +403,7 @@ export default function TechnicianServiceDetails({ setCurrentPage, ...context }:
                             toastSuccess(isAr ? 'تم تحديث العرض' : 'Offer updated', isAr);
                           }
                         } else {
-                          const cr = await createOffer({ targetType: 'service', serviceId: Number(service.id), price: priceNum, days: daysNum, message: offerMessage || '' });
+                          const cr = await createOffer({ targetType: 'service', serviceId: String(service.id), price: priceNum, days: daysNum, message: offerMessage || '' });
                           if (cr.ok) {
                             setHasSubmitted(true);
                             try {

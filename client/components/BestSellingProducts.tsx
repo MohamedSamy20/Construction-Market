@@ -8,6 +8,7 @@ import { RouteContext } from './Router';
 import { useTranslation } from '../hooks/useTranslation';
 import { formatCurrency } from '../utils/vendorHelpers';
 import Swal from 'sweetalert2';
+import { toastSuccess, toastInfo } from '../utils/alerts';
 import { getProducts } from '@/services/products';
 
 // No static fallback; we will render an empty state if no products are returned.
@@ -117,26 +118,12 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
                             inStock: true
                           });
                           
-                          Swal.fire({
-                            title: locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة',
-                            icon: 'success',
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 3000
-                          });
+                          toastSuccess(locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة', locale==='ar');
                         } else {
                           // Remove from wishlist
                           removeFromWishlist && removeFromWishlist(String(product.id));
                           
-                          Swal.fire({
-                            title: locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة',
-                            icon: 'info',
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 3000
-                          });
+                          toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
                         }
                       }}
                     >
@@ -180,14 +167,7 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
                         quantity: 1,
                         inStock: true,
                       });
-                      Swal.fire({
-                        title: locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة',
-                        icon: 'success',
-                        toast: true,
-                        position: 'top-end',
-                        showConfirmButton: false,
-                        timer: 2000,
-                      });
+                      toastSuccess(locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة', locale==='ar');
                     }}
                   >
                     <ShoppingCart className="w-4 h-4 ml-1" />

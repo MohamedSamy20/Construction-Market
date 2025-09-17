@@ -1,8 +1,8 @@
 import { api } from '@/lib/api';
 
 export type RentalDto = {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   productName?: string | null;
   customerId: string;
   startDate: string;
@@ -12,10 +12,12 @@ export type RentalDto = {
   totalAmount: number;
   status: string;
   createdAt: string;
+  imageUrl?: string | null;
 };
 
 export type CreateRentalInput = {
-  productId: number;
+  productId?: string;
+  productName?: string;
   customerId: string;
   startDate: string; // ISO date
   endDate: string;   // ISO date
@@ -29,6 +31,7 @@ export type CreateRentalInput = {
   pickupFee?: number;
   specialInstructions?: string;
   usageNotes?: string;
+  imageUrl?: string;
 };
 
 export async function listMyRentals() {
@@ -36,19 +39,19 @@ export async function listMyRentals() {
 }
 
 export async function createRental(input: CreateRentalInput) {
-  return api.post<{ id: number }>(`/api/Rentals`, input, { auth: true });
+  return api.post<{ id: string }>(`/api/Rentals`, input, { auth: true });
 }
 
 export async function listPublicRentals() {
   return api.get<RentalDto[]>(`/api/Rentals/public`);
 }
 
-export async function getRentalById(id: number) {
-  return api.get<RentalDto>(`/api/Rentals/${id}`);
+export async function getRentalById(id: string | number) {
+  return api.get<RentalDto>(`/api/Rentals/${encodeURIComponent(String(id))}`);
 }
 
-export async function deleteRental(id: number) {
-  return api.del<void>(`/api/Rentals/${id}`, { auth: true });
+export async function deleteRental(id: string | number) {
+  return api.del<void>(`/api/Rentals/${encodeURIComponent(String(id))}`, { auth: true });
 }
 
 export type UpdateRentalInput = {
@@ -59,29 +62,29 @@ export type UpdateRentalInput = {
   currency?: string | null;
   specialInstructions?: string | null;
   usageNotes?: string | null;
-  productId?: number | null;
+  productId?: string | null;
   customerId?: string | null;
 };
 
-export async function updateRental(id: number, input: UpdateRentalInput) {
-  return api.put<void>(`/api/Rentals/${id}`, input, { auth: true });
+export async function updateRental(id: string | number, input: UpdateRentalInput) {
+  return api.put<void>(`/api/Rentals/${encodeURIComponent(String(id))}`, input, { auth: true });
 }
 
-export async function adjustRentalDays(id: number, days: number) {
-  return api.post(`/api/Rentals/${id}/adjust-days`, { days }, { auth: true });
+export async function adjustRentalDays(id: string | number, days: number) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/adjust-days`, { days }, { auth: true });
 }
 
 export type SendMessageInput = { name?: string; phone?: string; message: string };
-export async function sendRentalMessage(id: number, input: SendMessageInput) {
-  return api.post(`/api/Rentals/${id}/message`, input);
+export async function sendRentalMessage(id: string | number, input: SendMessageInput) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/message`, input);
 }
 
-export async function listRentalMessages(id: number) {
-  return api.get(`/api/Rentals/${id}/messages`, { auth: true });
+export async function listRentalMessages(id: string | number) {
+  return api.get(`/api/Rentals/${encodeURIComponent(String(id))}/messages`, { auth: true });
 }
 
-export async function replyRentalMessage(id: number, message: string, toEmail?: string) {
-  return api.post(`/api/Rentals/${id}/reply`, { message, toEmail }, { auth: true });
+export async function replyRentalMessage(id: string | number, message: string, toEmail?: string) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/reply`, { message, toEmail }, { auth: true });
 }
 
 // Admin endpoints
@@ -89,12 +92,12 @@ export async function getPendingRentals() {
   return api.get(`/api/Rentals/pending`, { auth: true });
 }
 
-export async function approveRental(id: number) {
-  return api.post(`/api/Rentals/${id}/approve`, {}, { auth: true });
+export async function approveRental(id: string | number) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/approve`, {}, { auth: true });
 }
 
-export async function declineRental(id: number) {
-  return api.post(`/api/Rentals/${id}/decline`, {}, { auth: true });
+export async function declineRental(id: string | number) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/decline`, {}, { auth: true });
 }
 
 // Vendor utilities for notifications

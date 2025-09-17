@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { toastSuccess, toastInfo } from "../utils/alerts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
@@ -147,27 +148,33 @@ export default function ProductListing({
           const backendList = arr.map((p: any) => {
             const imgs = Array.isArray((p as any).images) ? (p as any).images : [];
             const primaryUrl = imgs.find((im: any) => im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl;
+            const basePrice = Number(p.price || 0);
+            const disc = (p as any).discountPrice;
+            const hasValidDiscount = typeof disc === 'number' && disc > 0 && disc < basePrice;
+            const currentPrice = hasValidDiscount ? Number(disc) : basePrice;
+            const originalPrice = basePrice;
             return ({
-            id: String(p.id),
-            group: 'tools',
-            name: { ar: p.nameAr || '', en: p.nameEn || '' },
-            brand: { ar: 'عام', en: 'Generic' },
-            category: { ar: (p as any).categoryName || '', en: (p as any).categoryName || '' },
-            categoryId: Number((p as any).categoryId ?? 0),
-            subCategory: { ar: '', en: '' },
-            price: Number(p.price || 0),
-            originalPrice: Number((p as any).discountPrice ?? p.price ?? 0),
-            rating: Number((p as any).averageRating ?? 0),
-            reviewCount: Number((p as any).reviewCount ?? 0),
-            image: primaryUrl || (p as any).imageUrl,
-            inStock: Number((p as any).stockQuantity ?? 0) > 0,
-            isNew: false,
-            isOnSale: false,
-            compatibility: [],
-            partNumber: (p as any).partNumber || '',
-            warranty: { ar: 'سنة', en: '1 year' },
-            description: { ar: (p as any).descriptionAr || '', en: (p as any).descriptionEn || '' },
-          })});
+              id: String(p.id),
+              group: 'tools',
+              name: { ar: p.nameAr || '', en: p.nameEn || '' },
+              brand: { ar: 'عام', en: 'Generic' },
+              category: { ar: (p as any).categoryName || '', en: (p as any).categoryName || '' },
+              categoryId: Number((p as any).categoryId ?? 0),
+              subCategory: { ar: '', en: '' },
+              price: currentPrice,
+              originalPrice: originalPrice,
+              rating: Number((p as any).averageRating ?? 0),
+              reviewCount: Number((p as any).reviewCount ?? 0),
+              image: primaryUrl || (p as any).imageUrl,
+              inStock: Number((p as any).stockQuantity ?? 0) > 0,
+              isNew: false,
+              isOnSale: currentPrice < originalPrice,
+              compatibility: [],
+              partNumber: (p as any).partNumber || '',
+              warranty: { ar: 'سنة', en: '1 year' },
+              description: { ar: (p as any).descriptionAr || '', en: (p as any).descriptionEn || '' },
+            })
+          });
           if (!cancelled) setProducts(backendList);
           if (Array.isArray(arr) && arr.length === 0) {
             try { console.warn('[products] Empty after filtering. Raw data sample:', data); } catch {}
@@ -372,14 +379,7 @@ export default function ProductListing({
                       });
                       try { window.dispatchEvent(new Event('favorites_updated')); } catch {}
                     }
-                    Swal.fire({
-                      title: locale === 'en' ? 'Added to favorites' : 'تمت الإضافة إلى المفضلة',
-                      icon: 'success',
-                      toast: true,
-                      position: 'top-end',
-                      showConfirmButton: false,
-                      timer: 3000
-                    });
+                    toastSuccess(locale === 'en' ? 'Added to favorites' : 'تمت الإضافة إلى المفضلة', locale==='ar');
                   } else {
                     if (useContextWishlist) {
                       rest.removeFromWishlist!(product.id);
@@ -387,14 +387,7 @@ export default function ProductListing({
                       removeFavorite(product.id);
                       try { window.dispatchEvent(new Event('favorites_updated')); } catch {}
                     }
-                    Swal.fire({
-                      title: locale === 'en' ? 'Removed from favorites' : 'تمت الإزالة من المفضلة',
-                      icon: 'info',
-                      toast: true,
-                      position: 'top-end',
-                      showConfirmButton: false,
-                      timer: 3000
-                    });
+                    toastInfo(locale === 'en' ? 'Removed from favorites' : 'تمت الإزالة من المفضلة', locale==='ar');
                   }
                 }}
               >
@@ -487,14 +480,7 @@ export default function ProductListing({
                     quantity: 1,
                     inStock: product.inStock,
                   });
-                  Swal.fire({
-                    title: locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة',
-                    icon: 'success',
-                    toast: true,
-                    position: 'top-end',
-                    showConfirmButton: false,
-                    timer: 2000,
-                  });
+                  toastSuccess(locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة', locale==='ar');
                 }}
               >
                 <ShoppingCart className="h-3 w-3 ml-1" />

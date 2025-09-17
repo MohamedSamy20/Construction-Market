@@ -18,9 +18,9 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
   const [newImageUrl, setNewImageUrl] = useState('');
   const newImageInputRef = useRef<HTMLInputElement | null>(null);
   const [newImageUploading, setNewImageUploading] = useState(false);
-  const [itemImageUploadingId, setItemImageUploadingId] = useState<number | null>(null);
+  const [itemImageUploadingId, setItemImageUploadingId] = useState<string | null>(null);
   const itemImageInputRef = useRef<HTMLInputElement | null>(null);
-  const [newParentId, setNewParentId] = useState<number | ''>('');
+  const [newParentId, setNewParentId] = useState<string | ''>('');
   const [newIsActive, setNewIsActive] = useState(true);
   const [newSortOrder, setNewSortOrder] = useState<number | ''>('');
   // DB categories
@@ -76,7 +76,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     }
   };
 
-  const triggerItemImageUpload = (categoryId: number) => {
+  const triggerItemImageUpload = (categoryId: string) => {
     setItemImageUploadingId(categoryId);
     itemImageInputRef.current?.click();
   };
@@ -88,7 +88,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     try {
       const { ok, data } = await api.uploadFile(file, 'images');
       if (ok && data?.success) {
-        const { ok: okUpdate } = await updateCategory(catId, { imageUrl: data.url } as any);
+        const { ok: okUpdate } = await updateCategory(String(catId), { imageUrl: data.url } as any);
         if (okUpdate) await reload();
         else alert(locale==='ar' ? 'فشل تحديث الصورة' : 'Failed to update image');
       } else {
@@ -120,7 +120,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
       descriptionAr: newDescriptionAr.trim() || null,
       descriptionEn: newDescriptionEn.trim() || null,
       imageUrl: newImageUrl.trim() || null,
-      parentCategoryId: newParentId === '' ? null : Number(newParentId),
+      parentCategoryId: newParentId === '' ? null : String(newParentId),
       isActive: newIsActive,
       sortOrder: newSortOrder === '' ? undefined : Number(newSortOrder)
     };
@@ -140,9 +140,9 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     }
   };
 
-  const removeCategory = async (id: number) => {
+  const removeCategory = async (id: string | number) => {
     if (!confirm(locale==='ar' ? 'هل أنت متأكد من الحذف؟' : 'Are you sure to delete?')) return;
-    const { ok } = await deleteCategory(id);
+    const { ok } = await deleteCategory(String(id));
     if (ok) await reload();
     else alert(locale==='ar' ? 'فشل حذف الفئة' : 'Failed to delete category');
   };
@@ -158,7 +158,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     if (inputDescEn == null) return;
     const inputImageUrl = window.prompt(locale==='ar' ? 'رابط الصورة (اختياري)' : 'Image URL (optional)', cat.imageUrl || '');
     if (inputImageUrl == null) return;
-    const inputIsActive = window.prompt(locale==='ar' ? 'حالة التفعيل (true/false)' : 'Is Active (true/false)', String(cat.isActive));
+    const inputIsActive = window.prompt(locale==='ar' ? 'حالة التفعيل (true/false)' : 'Is Active (true/false)', String(!!cat.isActive));
     if (inputIsActive == null) return;
     const inputSort = window.prompt(locale==='ar' ? 'ترتيب العرض (رقم)' : 'Sort order (number)', String(cat.sortOrder ?? ''));
     if (inputSort == null) return;
@@ -232,7 +232,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
               <select
                 className="border rounded-md h-10 px-2"
                 value={newParentId}
-                onChange={(e) => setNewParentId(e.target.value === '' ? '' : Number(e.target.value))}
+                onChange={(e) => setNewParentId(e.target.value === '' ? '' : String(e.target.value))}
               >
                 <option value="">{locale==='ar' ? 'بدون فئة أب' : 'No parent category'}</option>
                 {(dbCategories || []).map(c => (
@@ -260,12 +260,14 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
               <div className="space-y-2">
                 {dbCategories.map((c) => (
                   <div key={c.id} className="flex items-center justify-between p-3 border rounded-md">
-                    <div>
-                      <div className="font-medium">{c.nameAr}</div>
-                      <div className="text-xs text-muted-foreground">{c.nameEn}</div>
+                    <div className="flex items-center gap-3">
                       {c.imageUrl && (
-                        <img src={c.imageUrl} alt={c.nameAr || c.nameEn} className="mt-1 h-12 w-12 object-cover rounded" />
+                        <img src={c.imageUrl} alt={c.nameAr || c.nameEn} className="h-10 w-10 object-cover rounded-md border" />
                       )}
+                      <div>
+                        <div className="font-medium">{c.nameAr}</div>
+                        <div className="text-xs text-muted-foreground">{c.nameEn}</div>
+                      </div>
                       {(c.descriptionAr || c.descriptionEn) && (
                         <div className="text-xs text-muted-foreground">{locale==='ar' ? (c.descriptionAr || c.descriptionEn) : (c.descriptionEn || c.descriptionAr)}</div>
                       )}
@@ -282,10 +284,10 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
                       <Button variant="outline" size="sm" onClick={() => void editCategory(c)}>
                         {locale==='ar' ? 'تعديل' : 'Edit'}
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => triggerItemImageUpload(c.id)} disabled={itemImageUploadingId === c.id}>
-                        {itemImageUploadingId === c.id ? (locale==='ar' ? '...رفع' : 'Uploading...') : (locale==='ar' ? 'تحديث صورة' : 'Update Image')}
+                      <Button variant="outline" size="sm" onClick={() => triggerItemImageUpload(String(c.id))} disabled={String(itemImageUploadingId || '') === String(c.id)}>
+                        {String(itemImageUploadingId || '') === String(c.id) ? (locale==='ar' ? '...رفع' : 'Uploading...') : (locale==='ar' ? 'تحديث صورة' : 'Update Image')}
                       </Button>
-                      <Button variant="destructive" size="sm" className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void removeCategory(c.id)}>
+                      <Button variant="destructive" size="sm" className="bg-destructive text-white hover:bg-destructive/90" onClick={() => void removeCategory(String(c.id))}>
                         {locale==='ar' ? 'حذف' : 'Delete'}
                       </Button>
                     </div>

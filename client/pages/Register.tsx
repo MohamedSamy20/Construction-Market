@@ -120,6 +120,7 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
       base.taxNumber = vTax.trim() || undefined;
       base.registryStart = vRegStart.trim() || undefined;
       base.registryEnd = vRegEnd.trim() || undefined;
+      if (dob.trim()) base.dateOfBirth = dob.trim();
       if (vDocFile) base.documentFile = vDocFile;
       if (vImageFile) base.imageFile = vImageFile;
       if (vLicenseImage) base.licenseImage = vLicenseImage;
@@ -136,20 +137,45 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
     }
     setError(null);
 
-    const { ok, data, error } = await apiRegister(base);
+    const { ok, data, error, status } = await apiRegister(base) as any;
     if (!ok || !data) {
-      let msg = (data as any)?.message || '';
-      if (!msg && error) {
-        if (typeof (error as any)?.message === 'string') msg = (error as any).message;
-        else if (typeof (error as any)?.title === 'string') msg = (error as any).title;
-        else if ((error as any)?.errors && typeof (error as any).errors === 'object') {
-          const all = Object.values((error as any).errors as any).flat().join(' | ');
-          msg = all;
-        } else {
-          try { msg = JSON.stringify(error); } catch { msg = String(error); }
+      const friendlyRegisterMessage = (status?: number, payload?: any) => {
+        const serverMsg = (payload as any)?.message || (typeof error === 'string' ? error : (error?.message || ''));
+        // express-validator style errors
+        const validations: Array<{ msg?: string; path?: string; param?: string }> = (payload as any)?.errors || [];
+        const mapValidation = (arr: typeof validations) => {
+          if (!Array.isArray(arr) || arr.length === 0) return '';
+          const msgs = arr.map((e) => e.msg || e.param || e.path).filter(Boolean) as string[];
+          return msgs.join(' | ');
+        };
+        if (status === 409) {
+          return isAr ? 'هذا البريد الإلكتروني مسجّل بالفعل.' : 'This email is already registered.';
         }
-      }
-      if (!msg) msg = isAr ? 'فشل إنشاء الحساب' : 'Registration failed';
+        if (status === 413) {
+          return isAr ? 'حجم الملف كبير جداً. من فضلك قلل الحجم أو اختر ملفات أصغر.' : 'Uploaded file is too large. Please reduce size or choose smaller files.';
+        }
+        if (status === 400) {
+          const v = mapValidation(validations);
+          if (v) return v;
+          // common fields
+          if (serverMsg) return serverMsg;
+          return isAr ? 'بيانات غير صالحة. تحقق من الحقول المطلوبة.' : 'Invalid data. Please check required fields.';
+        }
+        if (status === 422) {
+          const v = mapValidation(validations);
+          if (v) return v;
+          return isAr ? 'فشل التحقق من صحة البيانات.' : 'Validation failed.';
+        }
+        if (status === 0 || status === undefined) {
+          return isAr ? 'تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مجدداً.' : 'Could not reach the server. Check your connection and try again.';
+        }
+        if (status && status >= 500) {
+          return isAr ? 'حدث خطأ في الخادم. يرجى المحاولة لاحقاً.' : 'Server error occurred. Please try again later.';
+        }
+        return serverMsg || (isAr ? 'فشل إنشاء الحساب' : 'Registration failed');
+      };
+
+      const msg = friendlyRegisterMessage(status, data);
       setError(msg);
       return;
     }

@@ -32,6 +32,37 @@ export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, 
     return 'home';
   };
 
+  const friendlyAuthMessage = (status?: number, serverMsg?: string | undefined) => {
+    const s = String(serverMsg || '').toLowerCase();
+    if (status === 400) {
+      // specific backend message: password not set
+      if (s.includes('password not set')) {
+        return isAr
+          ? 'لا توجد كلمة مرور مضبوطة لهذا الحساب. من فضلك استخدم "نسيت كلمة المرور؟" لتعيين كلمة مرور جديدة.'
+          : 'No password is set for this account. Please use "Forgot password?" to set a new password.';
+      }
+      return isAr ? 'طلب غير صالح. تحقق من البيانات المدخلة.' : 'Bad request. Please check your input.';
+    }
+    if (status === 401) {
+      return isAr ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Invalid email or password.';
+    }
+    if (status === 403) {
+      return isAr ? 'حسابك غير مخوّل للوصول.' : 'You are not authorized to access this resource.';
+    }
+    if (status === 404) {
+      return isAr ? 'الخدمة غير متاحة حالياً.' : 'The service is currently unavailable.';
+    }
+    if (status === 0 || status === undefined) {
+      return isAr ? 'تعذّر الاتصال بالخادم. تأكد من اتصالك وحاول مجدداً.' : 'Could not reach the server. Check your connection and try again.';
+    }
+    if (status && status >= 500) {
+      return isAr ? 'حدث خطأ في الخادم. يرجى المحاولة لاحقاً.' : 'Server error occurred. Please try again later.';
+    }
+    // fallback to server message if present
+    if (serverMsg) return serverMsg;
+    return isAr ? 'فشل تسجيل الدخول' : 'Login failed';
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     // Validation
@@ -45,9 +76,10 @@ export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, 
     }
     setError(null);
 
-    const { ok, data, error } = await apiLogin({ email, password });
+    const { ok, data, error, status } = await apiLogin({ email, password }) as any;
     if (!ok || !data) {
-      const msg = (data as any)?.message || (error && String(error)) || (isAr ? 'فشل تسجيل الدخول' : 'Login failed');
+      const serverMsg = (data as any)?.message || (error && (typeof error === 'string' ? error : (error?.message || '')));
+      const msg = friendlyAuthMessage(status, serverMsg);
       setError(msg);
       return;
     }

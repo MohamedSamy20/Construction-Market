@@ -29,10 +29,12 @@ import wishlistRoutes from './routes/wishlist.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import projectChatRoutes from './routes/projectChat.routes.js';
 import vendorAnalyticsRoutes from './routes/vendorAnalytics.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import commissionsRoutes from './routes/commissions.routes.js';
 import techniciansRoutes from './routes/technicians.routes.js';
 
 import { errorHandler, notFound } from './middlewares/error.js';
+import { seedAdmin, seedCategories } from './utils/seed.js';
 
 dotenv.config();
 configureCloudinary();
@@ -40,13 +42,71 @@ configureCloudinary();
 const app = express();
 
 // CORS
-app.use(cors({
-  origin: (origin, cb) => cb(null, true),
+// Normalize multiple leading slashes in incoming URLs to avoid 404s from paths like //api/...
+app.use((req, _res, next) => {
+  try {
+    const original = req.url || '';
+    // Collapse only leading double slashes (do not touch query/body)
+    const normalized = original.replace(/^\/{2,}/, '/');
+    req.url = normalized;
+  } catch {}
+  next();
+});
+
+// CORS
+// Configure allowed origins via env, fallback to common localhost URLs
+const allowedOrigins = (() => {
+  const csv = process.env.ALLOWED_ORIGINS || '';
+  const base = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'https://localhost:3000',
+    'https://127.0.0.1:3000',
+  ];
+  const extra = csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const set = new Set([...base, ...extra]);
+  return Array.from(set);
+})();
+
+const corsOptions = {
+  origin: (origin, cb) => {
+    try {
+      // Allow requests with no origin (e.g., mobile apps, curl, Postman)
+      if (!origin) return cb(null, true);
+      // Allow if origin is explicitly in the whitelist
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      // Additionally allow same-origin requests (when server and client share origin)
+      // or relaxed dev mode
+      if (process.env.NODE_ENV !== 'production') return cb(null, true);
+      return cb(new Error(`CORS blocked for origin: ${origin}`));
+    } catch (e) {
+      // On parsing errors, fail open in dev
+      if (process.env.NODE_ENV !== 'production') return cb(null, true);
+      return cb(e);
+    }
+  },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Set-Cookie'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+app.use(cors(corsOptions));
+// Explicitly handle preflight requests for all routes
+app.options('*', cors(corsOptions));
 
 // Security
-app.use(helmet());
+// In development, relax some Helmet policies that can interfere with cross-origin API calls
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  crossOriginResourcePolicy: false,
+}));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 1000,
@@ -60,6 +120,14 @@ app.use(cookieParser());
 
 // DB
 await connectDB();
+// Dev data seeders (create static Admin if configured)
+if (process.env.SEED_ADMIN === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_ADMIN !== 'false')) {
+  try { await seedAdmin(); } catch (e) { console.warn('[seed] admin seeding skipped:', e?.message || e); }
+}
+// Optionally seed default Categories for development/testing
+if (process.env.SEED_CATEGORIES === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_CATEGORIES !== 'false')) {
+  try { await seedCategories(); } catch (e) { console.warn('[seed] categories seeding skipped:', e?.message || e); }
+}
 
 // Health
 app.get('/health', (req, res) => res.json({ ok: true, service: 'construction-marketplace-backend' }));
@@ -100,6 +168,7 @@ app.use('/api/ProjectChat', projectChatRoutes);
 app.use('/api/VendorAnalytics', vendorAnalyticsRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/Technicians', techniciansRoutes);
+app.use('/api/Notifications', notificationsRoutes);
 
 // 404 and error
 app.use(notFound);
