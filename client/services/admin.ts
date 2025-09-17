@@ -47,6 +47,7 @@ export async function adminUpdateProduct(id: string | number, payload: any) {
 
 export async function adminSetProductDiscount(id: string | number, discountPrice: number | null) {
   return api.post(`/api/Admin/products/${String(id)}/discount`, { discountPrice }, { auth: true });
+
 }
 
 export async function approveService(serviceId: string) {

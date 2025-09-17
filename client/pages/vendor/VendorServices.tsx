@@ -57,6 +57,16 @@ export default function VendorServices({ setCurrentPage, ...context }: Props) {
     return map[id]?.[locale === "ar" ? "ar" : "en"] || id;
   };
 
+  // Generate a stable, unique key for each service card
+  const keyForService = (s: any, idx: number) => {
+    const candidate = s?.id ?? s?._id ?? s?.serviceId ?? s?.uuid ?? s?.slug;
+    if (candidate !== undefined && candidate !== null && candidate !== "") return String(candidate);
+    // Fallback uses some stable fields + index to avoid collisions
+    const type = s?.technicianType || s?.requiredSkills || s?.type || "unknown";
+    const start = s?.startDate || s?.createdAt || "";
+    return `svc-${type}-${start}-${idx}`;
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header currentPage="vendor-services" setCurrentPage={safeSetCurrentPage} {...context} />
@@ -99,8 +109,8 @@ export default function VendorServices({ setCurrentPage, ...context }: Props) {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {userServices.map((s:any) => (
-              <Card key={s.id}>
+            {userServices.map((s:any, idx:number) => (
+              <Card key={keyForService(s, idx)}>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-base">{labelForServiceType(s.technicianType || s.requiredSkills || s.type)}</CardTitle>
