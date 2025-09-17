@@ -8,6 +8,7 @@ import { Rental } from '../models/Rental.js';
 import { Project } from '../models/Project.js';
 import { Service } from '../models/Service.js';
 import { AdminOption } from '../models/AdminOption.js';
+import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 const adminOnly = [protect, requireRoles('Admin')];
@@ -88,12 +89,171 @@ router.post('/merchants/:id/suspend', ...adminOnly, async (req, res) => {
 });
 
 // Users management
-router.get('/users', ...adminOnly, (req, res) => res.json({ success: true, items: [] }));
-router.post('/users/:id/status', ...adminOnly, (req, res) => res.json({ success: true }));
-router.post('/users', ...adminOnly, (req, res) => res.status(201).json({ success: true, id: 'new' }));
-router.put('/users/:id', ...adminOnly, (req, res) => res.json({ success: true }));
-router.delete('/users/:id', ...adminOnly, (req, res) => res.json({ success: true }));
-router.get('/users/:id', ...adminOnly, (req, res) => res.json({ success: true, item: null }));
+router.get('/users', ...adminOnly, async (req, res) => {
+  try {
+    const { role, status, q } = req.query || {};
+    const filter = {};
+    if (role) {
+      const r = String(role);
+      filter.role = r;
+    }
+    if (status) {
+      const s = String(status).toLowerCase();
+      if (s === 'pending') filter.isVerified = false;
+      if (s === 'active') { filter.isActive = true; filter.isVerified = true; }
+      if (s === 'suspended') filter.isActive = false;
+      if (s === 'banned') filter.isActive = false; // simple mapping
+    }
+    if (q) {
+      const text = String(q).trim();
+      if (text) {
+        filter.$or = [
+          { name: new RegExp(text, 'i') },
+          { email: new RegExp(text, 'i') },
+          { companyName: new RegExp(text, 'i') },
+        ];
+      }
+    }
+    const rows = await User.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(1000);
+    const items = rows.map((u) => ({
+      id: String(u._id),
+      name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
+      email: u.email || null,
+      phoneNumber: u.phoneNumber || null,
+      roles: [u.role].filter(Boolean),
+      isActive: !!u.isActive,
+      isVerified: !!u.isVerified,
+      createdAt: u.createdAt ? u.createdAt.toISOString() : null,
+      companyName: u.companyName || null,
+      city: u.city || null,
+      country: u.country || null,
+    }));
+    return res.json({ success: true, items });
+  } catch (err) {
+    console.warn('[admin] users list error:', err?.message || err);
+    return res.json({ success: true, items: [] });
+  }
+});
+
+router.post('/users/:id/status', ...adminOnly, async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const updates = {};
+    const s = String(status || '').toLowerCase();
+    if (s === 'active') { updates.isActive = true; updates.isVerified = true; }
+    else if (s === 'pending') { updates.isVerified = false; }
+    else if (s === 'suspended' || s === 'banned') { updates.isActive = false; }
+    const updated = await User.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.warn('[admin] set status error:', err?.message || err);
+    return res.status(500).json({ success: false, message: 'Failed to update status' });
+  }
+});
+
+router.post('/users', ...adminOnly, async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const email = String(payload.email || '').toLowerCase();
+    const password = String(payload.password || '');
+    if (!email || !password) return res.status(400).json({ success: false, message: 'email and password are required' });
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(409).json({ success: false, message: 'Email already registered' });
+    const hash = await bcrypt.hash(password, 10);
+    const created = await User.create({
+      email,
+      password: hash,
+      firstName: payload.firstName,
+      middleName: payload.middleName,
+      lastName: payload.lastName,
+      name: [payload.firstName, payload.lastName].filter(Boolean).join(' ') || payload.name,
+      phoneNumber: payload.phoneNumber,
+      companyName: payload.companyName,
+      city: payload.city,
+      country: payload.country,
+      role: payload.role || 'User',
+      isActive: true,
+      isVerified: true,
+    });
+    return res.status(201).json({ success: true, id: String(created._id) });
+  } catch (err) {
+    console.warn('[admin] create user error:', err?.message || err);
+    return res.status(500).json({ success: false, message: 'Failed to create user' });
+  }
+});
+
+router.put('/users/:id', ...adminOnly, async (req, res) => {
+  try {
+    const updates = { ...(req.body || {}) };
+    // Do not allow sensitive changes here
+    ['password', 'email', 'createdAt', 'updatedAt', '_id'].forEach((k) => delete updates[k]);
+    // Derive name if first/last provided
+    if ((updates.firstName || updates.lastName) && !updates.name) {
+      updates.name = [updates.firstName, updates.lastName].filter(Boolean).join(' ');
+    }
+    const updated = await User.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.warn('[admin] update user error:', err?.message || err);
+    return res.status(500).json({ success: false, message: 'Failed to update user' });
+  }
+});
+
+router.delete('/users/:id', ...adminOnly, async (req, res) => {
+  try {
+    const it = await User.findByIdAndDelete(req.params.id);
+    if (!it) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.warn('[admin] delete user error:', err?.message || err);
+    return res.status(500).json({ success: false, message: 'Failed to delete user' });
+  }
+});
+
+router.get('/users/:id', ...adminOnly, async (req, res) => {
+  try {
+    const u = await User.findById(req.params.id);
+    if (!u) return res.status(404).json({ success: false, item: null, message: 'User not found' });
+    const item = {
+      id: String(u._id),
+      name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
+      email: u.email || null,
+      phoneNumber: u.phoneNumber || null,
+      roles: [u.role].filter(Boolean),
+      isActive: !!u.isActive,
+      isVerified: !!u.isVerified,
+      createdAt: u.createdAt ? u.createdAt.toISOString() : null,
+      companyName: u.companyName || null,
+      city: u.city || null,
+      country: u.country || null,
+      firstName: u.firstName || null,
+      middleName: u.middleName || null,
+      lastName: u.lastName || null,
+      taxNumber: u.taxNumber || null,
+      profession: u.profession || null,
+      iban: u.iban || null,
+      registryStart: u.registryStart || null,
+      registryEnd: u.registryEnd || null,
+      address: u.address || null,
+      buildingNumber: u.buildingNumber || null,
+      streetName: u.streetName || null,
+      postalCode: u.postalCode || null,
+      profilePicture: u.profilePicture || null,
+      documentPath: u.documentUrl || null,
+      licenseImagePath: u.licenseImageUrl || null,
+      rating: null,
+      reviewCount: null,
+    };
+    return res.json({ success: true, item });
+  } catch (err) {
+    console.warn('[admin] get user error:', err?.message || err);
+    return res.status(500).json({ success: false, item: null, message: 'Failed to fetch user' });
+  }
+});
 
 // Analytics (computed from DB)
 router.get('/analytics/overview', ...adminOnly, async (req, res) => {

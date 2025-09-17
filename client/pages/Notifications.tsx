@@ -1,42 +1,71 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import Header from "../components/Header";
-import type { RouteContext } from "../components/Router";
+import Footer from "../components/Footer";
+import type { RouteContext } from "../components/routerTypes";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Bell } from "lucide-react";
 import { useTranslation } from "../hooks/useTranslation";
+import { listMyNotifications, markNotificationRead } from "@/services/notifications";
+import { getConversation } from "@/services/chat";
 
 export default function NotificationsPage(context: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const [items, setItems] = useState<any[]>([]);
+  const setCurrentPage = context.setCurrentPage as any;
 
-  useEffect(() => {
+  const load = async () => {
     try {
-      if (typeof window === 'undefined') return;
-      const raw = window.localStorage.getItem('app_notifications');
-      let list = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(list)) {
-        const currentUserId = (context as any)?.user?.id;
-        const currentRole = (context as any)?.user?.role;
-        // role-based filtering
-        if (currentRole === 'admin') {
-          // admins see all
-          // no filter
-        } else if (currentRole === 'vendor') {
-          list = list.filter((n:any)=> n.recipientRole === 'vendor' && n.recipientId && n.recipientId === currentUserId);
-        } else {
-          // normal users (customers) see only their notifications (recipientRole user or undefined for backward compat)
-          list = list.filter((n:any)=> (!!n.recipientId && n.recipientId === currentUserId) && (n.recipientRole === undefined || n.recipientRole === 'user'));
-        }
-        // sort newest first
-        list.sort((a:any,b:any)=> new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime());
+      const r = await listMyNotifications();
+      if (r.ok && r.data && (r.data as any).success) {
+        const list = ((r.data as any).data || []) as any[];
         setItems(list);
+      } else {
+        setItems([]);
       }
-    } catch {}
-  }, []);
+    } catch {
+      setItems([]);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const openFromNotification = async (n: any) => {
+    try {
+      // mark read first
+      if (n && n._id) { try { await markNotificationRead(String(n._id)); } catch {} }
+      // chat message -> navigate to chat using conversationId
+      if (n?.type === 'chat.message' && n?.data?.conversationId) {
+        const cid = String(n.data.conversationId);
+        try { window.localStorage.setItem('chat_conversation_id', cid); } catch {}
+        // try load conv to know role-based page
+        try {
+          const c = await getConversation(cid);
+          if (c.ok && c.data) {
+            const vendorId = String((c.data as any).vendorId || '');
+            const techId = String((c.data as any).technicianId || '');
+            const sid = String((c.data as any).serviceRequestId || '');
+            try { if (sid) window.localStorage.setItem('chat_service_id', sid); } catch {}
+            // decide target page based on current user role
+            const role = String((context as any)?.user?.role || '').toLowerCase();
+            if (role === 'vendor') {
+              try { if (techId) window.localStorage.setItem('chat_technician_id', techId); } catch {}
+              setCurrentPage && setCurrentPage('vendor-chat');
+            } else {
+              setCurrentPage && setCurrentPage('technician-chat');
+            }
+            return;
+          }
+        } catch {}
+      }
+    } finally {
+      // refresh list after marking read
+      void load();
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <Header {...context} />
+      <Header {...(context as any)} />
       <div className="container mx-auto px-4 py-8">
         <Card>
           <CardHeader>
@@ -45,23 +74,28 @@ export default function NotificationsPage(context: Partial<RouteContext>) {
               {locale === 'ar' ? 'التنبيهات' : 'Notifications'}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2">
             {items.length === 0 ? (
               <div className="p-4 border rounded-lg text-sm text-muted-foreground">
                 {locale === 'ar' ? 'لا توجد تنبيهات بعد.' : 'No notifications yet.'}
               </div>
             ) : (
               items.map((n:any) => (
-                <div key={n.id} className="p-4 border rounded-lg">
-                  <div className="font-medium">{n.title}</div>
-                  {!!n.desc && <div className="text-sm text-muted-foreground">{n.desc}</div>}
-                  <div className="text-xs text-muted-foreground mt-1">{(() => { const numLocale = locale==='ar' ? 'ar-EG' : 'en-US'; return new Date(n.createdAt || Date.now()).toLocaleString(numLocale); })()}</div>
+                <div
+                  key={String(n._id || n.id)}
+                  className={`p-3 border rounded-md bg-white cursor-pointer hover:bg-muted/30 ${n.read ? '' : 'border-primary/40'}`}
+                  onClick={() => void openFromNotification(n)}
+                >
+                  <div className="text-sm font-medium">{n.title || (locale==='ar'?'تنبيه':'Notification')}</div>
+                  <div className="text-sm text-muted-foreground break-words">{n.message}</div>
+                  <div className="text-[10px] text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString(locale==='ar'?'ar-EG':'en-US')}</div>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
       </div>
+      <Footer setCurrentPage={context.setCurrentPage as any} />
     </div>
   );
 }

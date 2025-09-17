@@ -403,7 +403,14 @@ export default function TechnicianServiceDetails({ setCurrentPage, ...context }:
                             toastSuccess(isAr ? 'تم تحديث العرض' : 'Offer updated', isAr);
                           }
                         } else {
-                          const cr = await createOffer({ targetType: 'service', serviceId: String(service.id), price: priceNum, days: daysNum, message: offerMessage || '' });
+                          const sid = String((service as any)?.id ?? '');
+                          const isValidObjectId = /^[a-f0-9]{24}$/i.test(sid);
+                          if (!isValidObjectId) {
+                            setSaving(false);
+                            try { alert(isAr ? 'معرّف الخدمة غير صالح' : 'Invalid service id'); } catch {}
+                            return;
+                          }
+                          const cr = await createOffer({ targetType: 'service', serviceId: sid, price: priceNum, days: daysNum, message: offerMessage || '' });
                           if (cr.ok) {
                             setHasSubmitted(true);
                             try {

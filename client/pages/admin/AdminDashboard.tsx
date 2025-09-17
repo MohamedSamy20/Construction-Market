@@ -47,12 +47,13 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
   const [finance, setFinance] = React.useState<{ monthlyRevenue: number; platformCommission: number; pendingVendorPayouts: number; currency: string }>({ monthlyRevenue: 0, platformCommission: 0, pendingVendorPayouts: 0, currency: 'SAR' });
   const [commissions, setCommissions] = React.useState<{ products: number; projectsMerchants: number; servicesTechnicians: number }>({ products: 0, projectsMerchants: 0, servicesTechnicians: 0 });
   const [commDraft, setCommDraft] = React.useState<{ products: string; projectsMerchants: string; servicesTechnicians: string }>({ products: '', projectsMerchants: '', servicesTechnicians: '' });
+  const [quickActions, setQuickActions] = React.useState<Array<{ page: string; labelAr: string; labelEn: string; icon?: string; enabled?: boolean }>>([]);
   const [savingKey, setSavingKey] = React.useState<string | null>(null);
 
   // ✅ Fixed: Remove dependencies from useCallback
   const loadAll = React.useCallback(async () => {
     try {
-      const [mer, srv, prod, usersAll, usersActiveVendors, usersTech, overview, c1, c2, c3] = await Promise.all([
+      const [mer, srv, prod, usersAll, usersActiveVendors, usersTech, overview, c1, c2, c3, qact] = await Promise.all([
         getPendingMerchants(),
         getPendingServices(),
         getPendingProducts(),
@@ -63,6 +64,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
         getAdminOption('commission_products'),
         getAdminOption('commission_projects_merchants'),
         getAdminOption('commission_services_technicians'),
+        getAdminOption('quick_actions'),
       ]);
 
       let currentPendingMerchants: any[] = [];
@@ -409,95 +411,118 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
               <CardTitle>{t('quickActions')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-users')}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                {t('manageUsers')}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-vendors')}
-              >
-                <Store className="mr-2 h-4 w-4" />
-                {t('manageVendors')}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-technicians')}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                {locale==='ar' ? 'إدارة الفنيين' : 'Manage Technicians'}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-products')}
-              >
-                <Package className="mr-2 h-4 w-4" />
-                {t('manageProducts')}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-rentals')}
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                {locale==='ar'? 'إدارة عقود التأجير (اعتماد/رفض)' : 'Manage Rental Contracts (Approve/Decline)'}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-reports')}
-              >
-                <BarChart3 className="mr-2 h-4 w-4" />
-                {t('reportsAndAnalytics')}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-sections')}
-              >
-                <Package className="mr-2 h-4 w-4" />
-                الأقسام
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-project-options')}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                {isAr ? 'خيارات مشاريع (كتالوج)' : 'Project Options (Catalog)'}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-pending-projects')}
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                {isAr ? 'مشاريع قيد الاعتماد' : 'Pending Projects'}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-                onClick={() => setCurrentPage && setCurrentPage('admin-all-projects')}
-              >
-                <Package className="mr-2 h-4 w-4" />
-                {isAr ? 'كل المشاريع' : 'All Projects'}
-              </Button>
-              <Button 
-                className="w-full justify-start"
-                variant="outline"
-
-                onClick={() => setCurrentPage && setCurrentPage('admin-offers')}
-              >
-                <Percent className="mr-2 h-4 w-4" />
-                {locale==='ar' ? 'إدارة العروض' : 'Manage Offers'}
-              </Button>
+              {/* Dynamic quick actions from AdminOptions (if configured) */}
+              {quickActions && quickActions.length > 0 ? (
+                quickActions.map((qa, idx) => {
+                  const iconMap: Record<string, any> = {
+                    Users, Store, Package, Clock, Settings, BarChart3, Percent,
+                  };
+                  const IconCmp = iconMap[String(qa.icon || '').trim()] || Users;
+                  const label = isAr ? (qa.labelAr || qa.labelEn || qa.page) : (qa.labelEn || qa.labelAr || qa.page);
+                  return (
+                    <Button
+                      key={`${qa.page}-${idx}`}
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => setCurrentPage && setCurrentPage(qa.page)}
+                    >
+                      <IconCmp className="mr-2 h-4 w-4" />
+                      {label}
+                    </Button>
+                  );
+                })
+              ) : (
+                <>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-users')}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    {t('manageUsers')}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-vendors')}
+                  >
+                    <Store className="mr-2 h-4 w-4" />
+                    {t('manageVendors')}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-technicians')}
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    {locale==='ar' ? 'إدارة الفنيين' : 'Manage Technicians'}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-products')}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    {t('manageProducts')}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-rentals')}
+                  >
+                    <Clock className="mr-2 h-4 w-4" />
+                    {locale==='ar'? 'إدارة عقود التأجير (اعتماد/رفض)' : 'Manage Rental Contracts (Approve/Decline)'}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-reports')}
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    {t('reportsAndAnalytics')}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-sections')}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    الأقسام
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-project-options')}
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    {isAr ? 'خيارات مشاريع (كتالوج)' : 'Project Options (Catalog)'}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-pending-projects')}
+                  >
+                    <Clock className="mr-2 h-4 w-4" />
+                    {isAr ? 'مشاريع قيد الاعتماد' : 'Pending Projects'}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-all-projects')}
+                  >
+                    <Package className="mr-2 h-4 w-4" />
+                    {isAr ? 'كل المشاريع' : 'All Projects'}
+                  </Button>
+                  <Button 
+                    className="w-full justify-start"
+                    variant="outline"
+                    onClick={() => setCurrentPage && setCurrentPage('admin-offers')}
+                  >
+                    <Percent className="mr-2 h-4 w-4" />
+                    {locale==='ar' ? 'إدارة العروض' : 'Manage Offers'}
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

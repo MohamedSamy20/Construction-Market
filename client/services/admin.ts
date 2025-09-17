@@ -41,12 +41,12 @@ export async function adminCreateProduct(payload: any) {
   return api.post(`/api/Admin/products`, payload, { auth: true });
 }
 
-export async function adminUpdateProduct(id: number, payload: any) {
-  return api.put(`/api/Admin/products/${id}`, payload, { auth: true });
+export async function adminUpdateProduct(id: string | number, payload: any) {
+  return api.put(`/api/Admin/products/${String(id)}`, payload, { auth: true });
 }
 
-export async function adminSetProductDiscount(id: number, discountPrice: number | null) {
-  return api.post(`/api/Admin/products/${id}/discount`, { discountPrice }, { auth: true });
+export async function adminSetProductDiscount(id: string | number, discountPrice: number | null) {
+  return api.post(`/api/Admin/products/${String(id)}/discount`, { discountPrice }, { auth: true });
 }
 
 export async function approveService(serviceId: string) {

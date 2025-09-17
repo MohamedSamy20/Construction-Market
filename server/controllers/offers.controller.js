@@ -2,34 +2,64 @@ import { Offer } from '../models/Offer.js';
 import { Service } from '../models/Service.js';
 import { Project } from '../models/Project.js';
 import { Notification } from '../models/Notification.js';
-import { body, validationResult } from 'express-validator';
+import { body, validationResult, param } from 'express-validator';
+import mongoose from 'mongoose';
 
 export const validateCreateOffer = [
   body('TargetType').isIn(['service', 'project']),
   body('Price').isNumeric(),
   body('Days').isInt({ min: 1 }),
+  // Conditionally require and validate target IDs
+  body('ServiceId')
+    .if(body('TargetType').equals('service'))
+    .exists().withMessage('ServiceId is required for service offers')
+    .bail()
+    .isMongoId().withMessage('ServiceId must be a valid ObjectId'),
+  body('ProjectId')
+    .if(body('TargetType').equals('project'))
+    .exists().withMessage('ProjectId is required for project offers')
+    .bail()
+    .isMongoId().withMessage('ProjectId must be a valid ObjectId'),
 ];
 
 export const validateUpdateOffer = [
   body('TargetType').optional().isIn(['service', 'project']),
   body('Price').optional().isNumeric(),
   body('Days').optional().isInt({ min: 1 }),
+  body('ServiceId').optional().isMongoId(),
+  body('ProjectId').optional().isMongoId(),
 ];
 
 export async function create(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const b = req.body || {};
-  const created = await Offer.create({
-    technicianId: req.user._id,
-    targetType: b.TargetType,
-    serviceId: b.ServiceId || undefined,
-    projectId: b.ProjectId || undefined,
-    price: b.Price,
-    days: b.Days,
-    message: b.Message || undefined,
-  });
-  res.status(201).json(created);
+  try {
+    // Extra defensive guard in addition to validators
+    if (b.TargetType === 'service') {
+      if (!b.ServiceId || !mongoose.Types.ObjectId.isValid(String(b.ServiceId))) {
+        return res.status(400).json({ success: false, message: 'Invalid ServiceId' });
+      }
+    }
+    if (b.TargetType === 'project') {
+      if (!b.ProjectId || !mongoose.Types.ObjectId.isValid(String(b.ProjectId))) {
+        return res.status(400).json({ success: false, message: 'Invalid ProjectId' });
+      }
+    }
+    const payload = {
+      technicianId: req.user._id,
+      targetType: b.TargetType,
+      serviceId: b.TargetType === 'service' ? b.ServiceId : undefined,
+      projectId: b.TargetType === 'project' ? b.ProjectId : undefined,
+      price: b.Price,
+      days: b.Days,
+      message: b.Message || undefined,
+    };
+    const created = await Offer.create(payload);
+    return res.status(201).json(created);
+  } catch (err) {
+    return res.status(400).json({ success: false, message: 'Failed to create offer', error: String(err?.message || err) });
+  }
 }
 
 export async function update(req, res) {
@@ -57,12 +87,16 @@ export async function remove(req, res) {
 }
 
 export async function listByService(req, res) {
-  const items = await Offer.find({ targetType: 'service', serviceId: req.params.serviceId }).sort({ createdAt: -1 });
+  const id = String(req.params.serviceId || '');
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid service id' });
+  const items = await Offer.find({ targetType: 'service', serviceId: id }).sort({ createdAt: -1 });
   res.json(items);
 }
 
 export async function listByProject(req, res) {
-  const items = await Offer.find({ targetType: 'project', projectId: req.params.projectId }).sort({ createdAt: -1 });
+  const id = String(req.params.projectId || '');
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ success: false, message: 'Invalid project id' });
+  const items = await Offer.find({ targetType: 'project', projectId: id }).sort({ createdAt: -1 });
   res.json(items);
 }
 
