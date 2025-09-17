@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { User, Edit, Save, X, MapPin, Mail, CreditCard, Shield, Package, Heart, History, Phone, Calendar } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { User, Edit, Save, X, MapPin, Mail, CreditCard, Shield, Package, Heart, History, Phone, Calendar, Camera } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { toastSuccess, toastError, toastInfo } from '../utils/alerts';
 import { Button } from '../components/ui/button';
@@ -17,6 +17,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 // Remove authMock usage; simple local validator
 import { getProfile, updateProfile, changePassword as apiChangePassword, deleteAccount as apiDeleteAccount } from '@/services/auth';
+import { api } from '@/lib/api';
 const validatePasswordMin = (pwd: string, min: number) => typeof pwd === 'string' && pwd.length >= min;
 import { getTechnicianOffers, updateOffer as apiUpdateOffer, deleteOffer as apiDeleteOffer } from '@/services/offers';
 import { listMyOrders, cancelOrder as apiCancelOrder, confirmDelivered as apiConfirmDelivered, type OrderDto } from '@/services/orders';
@@ -68,6 +69,8 @@ interface ProfileUser {
   registryStart?: string;
   registryEnd?: string;
   isVerified?: boolean;
+  // License image URL from backend profile (display-only preview)
+  licenseImageUrl?: string;
 }
 
 interface UserProfileProps extends RouteContext {
@@ -87,6 +90,8 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
   const isTechnician = ((user as any)?.role === 'technician' || (user as any)?.role === 'worker');
   const technicianId = (user as any)?.id || null;
   const [isEditing, setIsEditing] = useState(false);
+  const avatarFileRef = useRef<HTMLInputElement | null>(null);
+  const licenseFileRef = useRef<HTMLInputElement | null>(null);
   const [editedUser, setEditedUser] = useState<ProfileUser>(() => {
     if (user) {
       const u: any = user;
@@ -122,6 +127,42 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
     }
     return { id: '1', name: '', email: '', phone: '', birthdate: '', avatar: '', role: 'customer', technicianType: '' } as ProfileUser;
   });
+
+  const handleAvatarFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const up = await api.uploadFile(file, 'avatars');
+      if (up.ok && up.data && (up.data as any).url) {
+        setEditedUser((prev) => ({ ...prev, avatar: String((up.data as any).url) }));
+        toastSuccess('تم رفع الصورة', true);
+      } else {
+        toastError('تعذر رفع الصورة', true);
+      }
+    } catch {
+      toastError('تعذر رفع الصورة', true);
+    } finally {
+      try { if (avatarFileRef.current) avatarFileRef.current.value = ''; } catch {}
+    }
+  };
+
+  const handleLicenseFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const up = await api.uploadFile(file, 'licenses');
+      if (up.ok && up.data && (up.data as any).url) {
+        setEditedUser((prev) => ({ ...prev, licenseImageUrl: String((up.data as any).url) }));
+        toastSuccess(locale==='en'?'License image uploaded':'تم رفع صورة الرخصة', locale==='ar');
+      } else {
+        toastError(locale==='en'?'Failed to upload license image':'تعذر رفع صورة الرخصة', locale==='ar');
+      }
+    } catch {
+      toastError(locale==='en'?'Failed to upload license image':'تعذر رفع صورة الرخصة', locale==='ar');
+    } finally {
+      try { if (licenseFileRef.current) licenseFileRef.current.value = ''; } catch {}
+    }
+  };
 
   // Fetch profile from backend on mount (if token/session available); fallback remains local
   // We do a best-effort fetch; failure just keeps current local state
@@ -176,7 +217,8 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
             email: typeof data.email === 'string' ? data.email : (user as any)?.email,
             phone: phoneVal,
             birthdate: birthStr,
-            avatar: (data as any)?.profilePicture || '',
+            // Use saved avatar from backend if available
+            avatar: (data as any)?.profilePicture || (data as any)?.imageUrl || '',
             role: uiRole,
             technicianType: (data as any)?.profession || (user as any)?.technicianType || '',
             firstName: first,
@@ -195,6 +237,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
             registryStart: (data as any)?.registryStart || '',
             registryEnd: (data as any)?.registryEnd || '',
             isVerified: Boolean((data as any)?.isVerified),
+            licenseImageUrl: (data as any)?.licenseImageUrl || '',
           };
           setEditedUser(merged);
           // sync Router user minimal fields
@@ -319,6 +362,12 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
         dateOfBirth: dobIso,
         iban: editedUser.iban || undefined,
         profession: editedUser.technicianType || undefined,
+        profilePicture: (editedUser.avatar || '').trim() || undefined,
+        taxNumber: editedUser.taxNumber || undefined,
+        registryStart: editedUser.registryStart || undefined,
+        registryEnd: editedUser.registryEnd || undefined,
+        phoneSecondary: editedUser.phoneSecondary || undefined,
+        licenseImageUrl: editedUser.licenseImageUrl || undefined,
       } as any);
 
       // Refresh canonical profile
@@ -351,6 +400,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
             streetName: d.streetName || prev.streetName || '',
             companyName: d.companyName || prev.companyName || '',
             iban: d.iban || prev.iban || '',
+            avatar: d.profilePicture || d.imageUrl || prev.avatar || '',
           }));
       }
       } catch {}
@@ -687,12 +737,34 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
           <div className="lg:col-span-1">
             <Card>
               <CardContent className="p-6 text-center">
-                <Avatar className="w-28 h-28 mx-auto mb-4 ring-2 ring-primary/20">
-                  <AvatarImage src={editedUser.avatar} />
-                  <AvatarFallback className="text-xl">
-                    {editedUser.name?.charAt(0) || 'أ'}
-                  </AvatarFallback>
-                </Avatar>
+                <div
+                  className={`relative inline-block ${isEditing ? 'cursor-pointer group' : ''}`}
+                  onClick={() => { if (isEditing) avatarFileRef.current?.click(); }}
+                >
+                  <Avatar className="w-28 h-28 mx-auto mb-4 ring-2 ring-primary/20">
+                    <AvatarImage src={editedUser.avatar} />
+                    <AvatarFallback className="text-xl">
+                      {editedUser.name?.charAt(0) || 'أ'}
+                    </AvatarFallback>
+                  </Avatar>
+                  {isEditing && (
+                    <>
+                      <input
+                        ref={avatarFileRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarFilePick}
+                        className="hidden"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition bg-black/30 text-white">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Camera className="h-4 w-4" />
+                          <span>{locale==='en' ? 'Change photo' : 'تغيير الصورة'}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 
                 <h2 className="text-xl font-medium mb-2">{[editedUser.firstName, editedUser.middleName, editedUser.lastName].filter(Boolean).join(' ') || editedUser.name}</h2>
                 <p className="text-muted-foreground mb-2">{editedUser.email}</p>
@@ -785,6 +857,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                         <Label htmlFor="birthdate">{locale === 'en' ? 'Birth Date' : 'تاريخ الميلاد'}</Label>
                         <Input id="birthdate" type="date" value={editedUser.birthdate || ''} onChange={(e) => setEditedUser({ ...editedUser, birthdate: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                       </div>
+                      
                       {isTechnician && (
                         <>
                           <div className="md:col-span-2">
@@ -798,41 +871,38 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                               className={!isEditing ? 'bg-muted' : ''}
                             />
                           </div>
-                          {/* Worker/Technician registration fields */}
-                          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="col-span-1 md:col-span-3">
-                              <Label htmlFor="tech_address">{locale === 'en' ? 'Address' : 'العنوان'}</Label>
-                              <Input
-                                id="tech_address"
-                                value={editedUser.address || ''}
-                                onChange={(e) => setEditedUser({ ...editedUser, address: e.target.value })}
-                                disabled={!isEditing}
-                                className={!isEditing ? 'bg-muted' : ''}
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="tech_city">{locale === 'en' ? 'City (optional)' : 'المدينة (اختياري)'}</Label>
-                              <Input
-                                id="tech_city"
-                                value={editedUser.city || ''}
-                                onChange={(e) => setEditedUser({ ...editedUser, city: e.target.value })}
-                                disabled={!isEditing}
-                                className={!isEditing ? 'bg-muted' : ''}
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="tech_postal">{locale === 'en' ? 'Postal Code' : 'الرمز البريدي'}</Label>
-                              <Input
-                                id="tech_postal"
-                                value={editedUser.postalCode || ''}
-                                onChange={(e) => setEditedUser({ ...editedUser, postalCode: e.target.value })}
-                                disabled={!isEditing}
-                                className={!isEditing ? 'bg-muted' : ''}
-                              />
-                            </div>
-                          </div>
                         </>
                       )}
+                    </div>
+
+                    {/* License image preview (clickable in edit mode) */}
+                    <div className="space-y-2">
+                      <Label className="block">{locale==='en' ? 'License Image' : 'صورة الرخصة'}</Label>
+                      <div
+                        className={`relative w-full md:w-1/2 lg:w-1/3 border rounded-md overflow-hidden bg-gray-50 dark:bg-gray-800 ${isEditing ? 'cursor-pointer group' : ''}`}
+                        onClick={() => { if (isEditing) licenseFileRef.current?.click(); }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {editedUser.licenseImageUrl ? (
+                          <img src={editedUser.licenseImageUrl} alt={locale==='en' ? 'License image' : 'صورة الرخصة'} className="w-full h-auto object-contain" />
+                        ) : (
+                          <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+                            {locale==='en' ? 'No license image uploaded' : 'لا توجد صورة رخصة'}
+                          </div>
+                        )}
+                        {isEditing && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white opacity-0 group-hover:opacity-100 transition">
+                            {locale==='en' ? 'Click to change' : 'اضغط للتغيير'}
+                          </div>
+                        )}
+                        <input
+                          ref={licenseFileRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLicenseFilePick}
+                          className="hidden"
+                        />
+                      </div>
                     </div>
                     {/* Vendor specific readout */}
                     {editedUser.role === 'vendor' && (
@@ -840,17 +910,17 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label>{locale==='en'?'Company Name':'اسم الشركة'}</Label>
-                            <Input value={editedUser.companyName || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.companyName || ''} onChange={(e)=> setEditedUser({ ...editedUser, companyName: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div>
                             <Label>{locale==='en'?'Tax Number':'الرقم الضريبي'}</Label>
-                            <Input value={editedUser.taxNumber || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.taxNumber || ''} onChange={(e)=> setEditedUser({ ...editedUser, taxNumber: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label>{locale==='en'?'IBAN':'رقم الآيبان'}</Label>
-                            <Input value={editedUser.iban || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.iban || ''} onChange={(e)=> setEditedUser({ ...editedUser, iban: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div>
                             <Label>{locale==='en'?'Verification':'حالة الاعتماد'}</Label>
@@ -860,34 +930,34 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                           <div>
                             <Label>{locale==='en'?'Building No.':'رقم المبنى'}</Label>
-                            <Input value={editedUser.buildingNumber || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.buildingNumber || ''} onChange={(e)=> setEditedUser({ ...editedUser, buildingNumber: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div>
                             <Label>{locale==='en'?'Street':'الشارع'}</Label>
-                            <Input value={editedUser.streetName || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.streetName || ''} onChange={(e)=> setEditedUser({ ...editedUser, streetName: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div>
                             <Label>{locale==='en'?'City':'المدينة'}</Label>
-                            <Input value={editedUser.city || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.city || ''} onChange={(e)=> setEditedUser({ ...editedUser, city: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div>
                             <Label>{locale==='en'?'Postal Code':'الرمز البريدي'}</Label>
-                            <Input value={editedUser.postalCode || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.postalCode || ''} onChange={(e)=> setEditedUser({ ...editedUser, postalCode: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <Label>{locale==='en'?'Phone (Secondary)':'الهاتف (إضافي)'}</Label>
-                            <Input value={editedUser.phoneSecondary || ''} disabled className="bg-muted" />
+                            <Input value={editedUser.phoneSecondary || ''} onChange={(e)=> setEditedUser({ ...editedUser, phoneSecondary: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <Label>{locale==='en'?'Registry Start':'بداية السجل الموحد'}</Label>
-                              <Input value={editedUser.registryStart || ''} disabled className="bg-muted" />
+                              <Input value={editedUser.registryStart || ''} onChange={(e)=> setEditedUser({ ...editedUser, registryStart: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                             </div>
                             <div>
                               <Label>{locale==='en'?'Registry End':'نهاية السجل الموحد'}</Label>
-                              <Input value={editedUser.registryEnd || ''} disabled className="bg-muted" />
+                              <Input value={editedUser.registryEnd || ''} onChange={(e)=> setEditedUser({ ...editedUser, registryEnd: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                             </div>
                           </div>
                         </div>
@@ -898,7 +968,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                       <div className="md:col-span-2 space-y-4">
                         <div>
                           <Label>{locale==='en'?'Address':'العنوان'}</Label>
-                          <Textarea value={(editedUser.address || '')} onChange={()=>{}} disabled className="bg-muted" />
+                          <Textarea value={(editedUser.address || '')} onChange={(e)=> setEditedUser({ ...editedUser, address: e.target.value })} disabled={!isEditing} className={!isEditing ? 'bg-muted' : ''} />
                         </div>
                       </div>
                     )}
@@ -1026,14 +1096,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                                         quantity: 1,
                                         maxQuantity: 10
                                       });
-                                      Swal.fire({
-                                        title: locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة',
-                                        icon: 'success',
-                                        toast: true,
-                                        position: 'top-end',
-                                        showConfirmButton: false,
-                                        timer: 3000
-                                      });
+                                      toastSuccess(locale === 'en' ? 'Added to cart' : 'تمت الإضافة إلى السلة', locale==='ar');
                                     }
                                   }}
                                 >
@@ -1047,14 +1110,7 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
                                     e.preventDefault();
                                     e.stopPropagation();
                                     removeFromWishlist && removeFromWishlist(item.id);
-                                    Swal.fire({
-                                      title: locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة',
-                                      icon: 'info',
-                                      toast: true,
-                                      position: 'top-end',
-                                      showConfirmButton: false,
-                                      timer: 3000
-                                    });
+                                    toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
                                   }}
                                 >
                                   <Heart className="h-4 w-4 fill-current" />

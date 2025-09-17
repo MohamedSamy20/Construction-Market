@@ -311,7 +311,7 @@ export default function TechnicianServices({ setCurrentPage, ...context }: Props
                 (async () => {
                   try {
                     setSaving(true);
-                    const res = await createOffer({ targetType: 'service', serviceId: Number(selectedService.id), price: priceNum, days: daysNum, message: offerMessage || '' });
+                    const res = await createOffer({ targetType: 'service', serviceId: String(selectedService.id), price: priceNum, days: daysNum, message: offerMessage || '' });
                     if (res.ok) {
                       // refresh my offers to update UI state
                       try {

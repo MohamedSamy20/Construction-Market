@@ -36,7 +36,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
   // State
   const [pendingMerchants, setPendingMerchants] = React.useState<Array<{ id: string; email: string; name: string; companyName?: string; createdAt?: string }>>([]);
-  const [pendingServices, setPendingServices] = React.useState<Array<{ id: number; title: string; description?: string; merchantId?: string; createdAt?: string }>>([]);
+  const [pendingServices, setPendingServices] = React.useState<Array<{ id: string; title: string; description?: string; vendorId?: string; createdAt?: string }>>([]);
   const [pendingProducts, setPendingProducts] = React.useState<any[]>([]);
   const [pendingServicesError, setPendingServicesError] = React.useState<string | null>(null);
   const [pendingProductsError, setPendingProductsError] = React.useState<string | null>(null);
@@ -214,9 +214,9 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
     } 
   };
 
-  const doApproveService = async (id: number) => { 
+  const doApproveService = async (id: string) => { 
     try { 
-      const r = await approveService(id); 
+      const r = await approveService(String(id)); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم اعتماد الخدمة':'Service approved', isAr); 
         await loadAll(); 
@@ -229,9 +229,9 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
     } 
   };
 
-  const doRejectService = async (id: number) => { 
+  const doRejectService = async (id: string) => { 
     try { 
-      const r = await rejectService(id, ''); 
+      const r = await rejectService(String(id), ''); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم رفض الخدمة':'Service rejected', isAr); 
         await loadAll(); 
@@ -246,7 +246,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
   const doApproveProduct = async (id: string) => { 
     try { 
-      const r = await approveProduct(id); 
+      const r = await approveProduct(String(id)); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم اعتماد المنتج':'Product approved', isAr); 
         await loadAll(); 
@@ -261,7 +261,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
   const doRejectProduct = async (id: string) => { 
     try { 
-      const r = await rejectProduct(id, ''); 
+      const r = await rejectProduct(String(id), ''); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم رفض المنتج':'Product rejected', isAr); 
         await loadAll(); 
@@ -361,7 +361,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
               {/* Pending products */}
               {pendingProducts.map((p: any) => (
-                <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                <div key={String(p.id)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
                   <div>
                     <p className="font-medium text-sm">{p.nameAr || p.nameEn || p.name}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1">

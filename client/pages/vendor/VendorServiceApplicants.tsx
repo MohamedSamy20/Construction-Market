@@ -34,7 +34,7 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
         const entries = await Promise.all(
           (data as any[]).map(async (s:any) => {
             try {
-              const r = await listOffersForService(Number(s.id));
+              const r = await listOffersForService(String(s.id));
               return [String(s.id), (r.ok && Array.isArray(r.data) ? r.data as OfferDto[] : [])] as [string, OfferDto[]];
             } catch { return [String(s.id), []] as [string, OfferDto[]]; }
           })
@@ -72,18 +72,18 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
     return all;
   }, [requests]);
 
-  const updateStatus = async (reqId: number, status: 'accepted' | 'rejected') => {
+  const updateStatus = async (reqId: string, status: 'accepted' | 'rejected') => {
     const confirmText = status === 'accepted' ? (isAr ? 'قبول هذا المتقدم؟' : 'Accept this applicant?') : (isAr ? 'رفض هذا المتقدم؟' : 'Reject this applicant?');
     const ok = await Swal.fire({ title: confirmText, icon: 'question', showCancelButton: true, confirmButtonText: isAr ? 'تأكيد' : 'Confirm', cancelButtonText: isAr ? 'إلغاء' : 'Cancel' });
     if (!ok.isConfirmed) return;
     try {
-      const res = await updateOfferStatus(Number(reqId), status);
+      const res = await updateOfferStatus(reqId, status);
       if (res.ok) {
         // Refresh the service offers containing this request
-        const affectedServiceId = res.data?.serviceId ?? myRequests.find(r=> r.id===Number(reqId))?.serviceId;
+        const affectedServiceId = res.data?.serviceId ?? myRequests.find(r=> String(r.id)===String(reqId))?.serviceId;
         if (affectedServiceId) {
           try {
-            const r = await listOffersForService(Number(affectedServiceId));
+            const r = await listOffersForService(String(affectedServiceId));
             setRequests(prev => ({ ...prev, [String(affectedServiceId)]: (r.ok && Array.isArray(r.data) ? r.data as OfferDto[] : []) }));
           } catch {}
         }
@@ -175,22 +175,22 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
                                 variant="secondary"
                                 onClick={async ()=> {
                                   try {
-                                    const sid = Number(s.id);
+                                    const sid = String(s.id);
                                     const tid = String(r.technicianId);
                                     // Try get conversation by keys, otherwise create
-                                    let convId: number | null = null;
+                                    let convId: string | null = null;
                                     try {
                                       const found = await getConversationByKeys(sid, tid);
-                                      if (found.ok && (found.data as any)?.id) convId = Number((found.data as any).id);
+                                      if (found.ok && (found.data as any)?.id) convId = String((found.data as any).id);
                                     } catch {}
                                     if (!convId) {
                                       const cr = await createConversation(sid, tid);
-                                      if (cr.ok && (cr.data as any)?.id) convId = Number((cr.data as any).id);
+                                      if (cr.ok && (cr.data as any)?.id) convId = String((cr.data as any).id);
                                     }
                                     if (convId) {
-                                      try { window.localStorage.setItem('chat_conversation_id', String(convId)); } catch {}
-                                      try { window.localStorage.setItem('chat_technician_id', String(tid)); } catch {}
-                                      try { window.localStorage.setItem('chat_service_id', String(sid)); } catch {}
+                                      try { window.localStorage.setItem('chat_conversation_id', convId); } catch {}
+                                      try { window.localStorage.setItem('chat_technician_id', tid); } catch {}
+                                      try { window.localStorage.setItem('chat_service_id', sid); } catch {}
                                       setCurrentPage && setCurrentPage('vendor-chat');
                                     }
                                   } catch {}

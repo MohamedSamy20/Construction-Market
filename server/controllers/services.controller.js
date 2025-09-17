@@ -58,7 +58,17 @@ export async function complete(req, res) {
 
 // Admin flow (also duplicated under /api/Admin/services/*)
 export async function adminListPending(req, res) {
-  const items = await Service.find({ isApproved: false }).sort({ createdAt: -1 });
+  const rows = await Service.find({ isApproved: false }).sort({ createdAt: -1 });
+  const items = rows.map((s) => ({
+    id: String(s._id),
+    title: s.title || s.type || 'Service',
+    description: s.description,
+    vendorId: s.vendorId,
+    dailyWage: s.dailyWage,
+    days: s.days,
+    total: s.total,
+    createdAt: s.createdAt,
+  }));
   res.json({ success: true, items });
 }
 

@@ -49,7 +49,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
         const { ok, data } = await getMyProducts();
         if (ok && Array.isArray(data)) {
           const list = data.map((p: any) => ({
-            id: p.id,
+            id: (p as any).id || (p as any)._id,
             name: p.name || p.nameAr || p.nameEn || p.title || '',
             nameAr: p.nameAr || p.name || '',
             nameEn: p.nameEn || p.name || '',
@@ -92,17 +92,18 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
     return () => { cancelled = true; };
   }, []);
 
-  // Load categories dynamically
+  // Load categories dynamically (public endpoint; no auth required)
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const token = getToken?.();
-      if (!token) return;
       try {
         const { ok, data } = await getAllCategories();
         if (ok && Array.isArray(data) && !cancelled) {
-          const mapped = (data as any[]).map(c => ({ id: String(c.id), name: c.nameAr || c.nameEn || c.name || '' }));
+          const mapped = (data as any[]).map(c => ({ id: String((c as any)._id || (c as any).id), name: (c as any).nameAr || (c as any).nameEn || (c as any).name || '' }));
           setCategories(mapped);
+        } else if (!cancelled) {
+          setCategories([]);
+          try { toastInfo(locale==='ar' ? 'تعذر تحميل الفئات' : 'Failed to load categories', locale==='ar'); } catch {}
         }
       } catch {}
     })();
@@ -233,7 +234,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       const { ok, data } = await getMyProducts();
       if (ok && Array.isArray(data)) {
         const list = data.map((p: any) => ({
-          id: p.id,
+          id: (p as any).id || (p as any)._id,
           name: p.name || p.nameAr || p.nameEn || '',
           nameAr: p.nameAr || p.name || '',
           nameEn: p.nameEn || p.name || '',
@@ -260,7 +261,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       nameAr: String(productData?.nameAr || productData?.name || ''),
       descriptionEn: String(productData?.descriptionEn || ''),
       descriptionAr: String(productData?.descriptionAr || ''),
-      categoryId: Number(productData?.categoryId || 0),
+      categoryId: String(productData?.categoryId || ''),
       price: Number(productData?.price || 0),
       discountPrice: undefined as number | undefined,
       stockQuantity: Number(productData?.stock || 0),
@@ -270,7 +271,17 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       attributes: [] as Array<{ nameEn: string; nameAr: string; valueEn: string; valueAr: string }>,
     };
     const created = await createProduct(payload as any);
-    const newId = (created?.data as any)?.id || (created?.data as any)?.Id;
+    if (!(created as any)?.ok || !(created as any)?.data) {
+      const status = (created as any)?.status;
+      toastError(
+        locale === 'en'
+          ? `Failed to create product${status ? ` (status ${status})` : ''}`
+          : `تعذر إنشاء المنتج${status ? ` (رمز ${status})` : ''}`,
+        locale === 'ar'
+      );
+      return;
+    }
+    const newId = ((created?.data as any)?.id) || ((created?.data as any)?._id) || ((created?.data as any)?.Id);
     // Upload images to Cloudinary then attach to product
     const files: File[] = Array.isArray(productData?._files) ? productData._files : [];
     if (newId && files.length > 0) {
@@ -281,11 +292,12 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
         for (let i = 0; i < items.length; i++) {
           try {
             const it = items[i];
-            const res = await addProductImage(Number(newId), {
+            const res = await addProductImage(String(newId), {
               imageUrl: it.url,
               isPrimary: i === 0,
               sortOrder: i,
             } as any);
+
             if ((res as any)?.ok) {
               setUploadDone((d) => d + 1);
             } else {
@@ -313,7 +325,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       nameAr: String(productData?.nameAr || productData?.name || ''),
       descriptionEn: String(productData?.descriptionEn || ''),
       descriptionAr: String(productData?.descriptionAr || ''),
-      categoryId: Number(productData?.categoryId || 0),
+      categoryId: String(productData?.categoryId || ''),
       price: Number(productData?.price || 0),
       discountPrice: undefined as number | undefined,
       stockQuantity: Number(productData?.stock || 0),
@@ -322,7 +334,8 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       rentPricePerDay: undefined as number | undefined,
       attributes: [] as Array<{ nameEn: string; nameAr: string; valueEn: string; valueAr: string }>,
     };
-    await updateProduct(productData.id, payload as any);
+    await updateProduct(String(productData.id), payload as any);
+
     // Handle any newly added files
     const files: File[] = Array.isArray(productData?._files) ? productData._files : [];
     if (files.length > 0) {
@@ -333,11 +346,12 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
         for (let i = 0; i < items.length; i++) {
           try {
             const it = items[i];
-            const res = await addProductImage(Number(productData.id), {
+            const res = await addProductImage(String(productData.id), {
               imageUrl: it.url,
               isPrimary: false,
               sortOrder: i,
             } as any);
+
             if ((res as any)?.ok) setUploadDone((d) => d + 1);
           } catch {
             toastError(locale === 'en' ? `Failed to attach image #${i + 1}` : `تعذر ربط الصورة رقم ${i + 1}` , locale === 'ar');
@@ -361,7 +375,8 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
       locale === 'ar'
     );
     if (!ok) return;
-    const res = await deleteProduct(Number(productId));
+    const res = await deleteProduct(String(productId));
+
     if ((res as any)?.ok) {
       toastSuccess(locale === 'en' ? 'Product deleted' : 'تم حذف المنتج', locale === 'ar');
       await reload();

@@ -8,7 +8,7 @@ export async function listMine(req, res) {
 }
 
 export const validateCreateRental = [
-  body('productId').isString().notEmpty(),
+  body('productId').optional().isString(),
   body('startDate').isISO8601(),
   body('endDate').isISO8601(),
   body('dailyRate').isNumeric(),
@@ -61,7 +61,7 @@ export async function create(req, res) {
   const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
   const total = days * Number(body.dailyRate || 0);
   const r = await Rental.create({
-    productId: body.productId,
+    productId: body.productId || undefined,
     productName: body.productName || undefined,
     customerId: req.user._id,
     startDate: start,
@@ -70,6 +70,8 @@ export async function create(req, res) {
     dailyRate: body.dailyRate,
     totalAmount: total,
     status: 'pending',
+    currency: body.currency || 'SAR',
+    imageUrl: body.imageUrl || undefined,
   });
   res.status(201).json({ id: r._id });
 }
@@ -85,7 +87,28 @@ export async function update(req, res) {
     body.rentalDays = days;
     body.totalAmount = days * Number(body.dailyRate || 0);
   }
-  const r = await Rental.findOneAndUpdate({ _id: req.params.id, customerId: req.user._id }, body, { new: true });
+  const r = await Rental.findOneAndUpdate(
+    { _id: req.params.id, customerId: req.user._id },
+    {
+      ...(body.startDate ? { startDate: new Date(body.startDate) } : {}),
+      ...(body.endDate ? { endDate: new Date(body.endDate) } : {}),
+      ...(typeof body.dailyRate !== 'undefined' ? { dailyRate: Number(body.dailyRate) } : {}),
+      ...(typeof body.securityDeposit !== 'undefined' ? { securityDeposit: Number(body.securityDeposit) } : {}),
+      ...(body.currency ? { currency: body.currency } : {}),
+      ...(body.productId ? { productId: body.productId } : { productId: undefined }),
+      ...(body.productName ? { productName: body.productName } : {}),
+      ...(body.specialInstructions ? { specialInstructions: body.specialInstructions } : {}),
+      ...(body.usageNotes ? { usageNotes: body.usageNotes } : {}),
+      ...(typeof body.requiresDelivery !== 'undefined' ? { requiresDelivery: !!body.requiresDelivery } : {}),
+      ...(typeof body.deliveryFee !== 'undefined' ? { deliveryFee: Number(body.deliveryFee) } : {}),
+      ...(typeof body.requiresPickup !== 'undefined' ? { requiresPickup: !!body.requiresPickup } : {}),
+      ...(typeof body.pickupFee !== 'undefined' ? { pickupFee: Number(body.pickupFee) } : {}),
+      ...(body.imageUrl ? { imageUrl: body.imageUrl } : {}),
+      ...(typeof body.rentalDays !== 'undefined' ? { rentalDays: Number(body.rentalDays) } : {}),
+      ...(typeof body.totalAmount !== 'undefined' ? { totalAmount: Number(body.totalAmount) } : {}),
+    },
+    { new: true }
+  );
   if (!r) return res.status(404).json({ success: false, message: 'Rental not found' });
   res.json({ success: true });
 }

@@ -10,6 +10,7 @@ import { Checkbox } from '../ui/checkbox';
 import { Switch } from '../ui/switch';
 import { DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getCommissionRates } from '@/services/commissions';
+import { toastError } from '../../utils/alerts';
 // removed brand list; brand field not used for vendor form
 
 interface ProductFormProps {
@@ -21,11 +22,8 @@ interface ProductFormProps {
 
 export default function ProductForm({ product, onSave, onCancel, categories = [] }: ProductFormProps) {
   const adminCategories = getAdminProductOptions().categories;
-  // Fallback categories only if backend not provided
-  const fallbackOptions = (Array.isArray(adminCategories) && adminCategories.length)
-    ? adminCategories.map((n: string, idx: number) => ({ id: String(idx + 1), name: n }))
-    : [{ id: '1', name: 'أبواب' }, { id: '2', name: 'نوافذ' }];
-  const categoryList: Array<{ id: number | string; name: string }> = Array.isArray(categories) && categories.length ? categories : fallbackOptions;
+  // Do NOT use fallback IDs for backend submission; require real categories from server
+  const categoryList: Array<{ id: number | string; name: string }> = Array.isArray(categories) ? categories : [];
   const [formData, setFormData] = useState({
     // Localized fields
     nameAr: product?.nameAr || product?.name || '',
@@ -84,6 +82,12 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Validate categoryId: must be a valid Mongo ObjectId (24 hex chars)
+    const catId = String(formData.categoryId || '');
+    if (!/^[a-fA-F0-9]{24}$/.test(catId)) {
+      toastError('الرجاء اختيار فئة صحيحة من قائمة الفئات (يجب تحميل الفئات من الخادم أولاً)', true);
+      return;
+    }
     const priceNum = Number(String(formData.price || '').replace(/[^0-9]/g, '')) || 0;
     const originalPriceNum = Number(String(formData.originalPrice || '').replace(/[^0-9]/g, '')) || 0;
     const stockNum = Number(String(formData.stock || '').replace(/[^0-9]/g, '')) || 0;
@@ -144,7 +148,10 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
 
           <div>
             <Label htmlFor="categoryId">الفئة</Label>
-            <Select value={String(formData.categoryId ?? '')} onValueChange={(value) => setFormData({ ...formData, categoryId: value })}>
+            <Select value={String(formData.categoryId ?? '')}
+              onValueChange={(value) => setFormData({ ...formData, categoryId: value })}
+              disabled={!categoryList.length}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="اختر الفئة" />
               </SelectTrigger>
@@ -154,6 +161,9 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
                 ))}
               </SelectContent>
             </Select>
+            {!categoryList.length && (
+              <p className="mt-1 text-xs text-muted-foreground">يرجى الانتظار لحين تحميل الفئات من الخادم، ثم اختر فئة قبل الإرسال.</p>
+            )}
           </div>
 
           <div>

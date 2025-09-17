@@ -376,7 +376,7 @@ export default function VendorProjects({ setCurrentPage, ...context }: Props) {
                 (async () => {
                   try {
                     setSaving(true);
-                    const res = await createBid(Number(selectedProject.id), { price: Number(offerPrice), days: Number(offerDays), message: offerMessage });
+                    const res = await createBid(String(selectedProject.id), { price: Number(offerPrice), days: Number(offerDays), message: offerMessage });
                     if (res.ok) {
                       try { const { ok, data } = await getMyBids(); if (ok && Array.isArray(data)) setMyBids(data as any[]); } catch {}
                       setProposalOpen(false);

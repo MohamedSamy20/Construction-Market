@@ -212,7 +212,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                   }
                   setWishOverrides(prev => ({ ...prev, [String(mapped.id)]: true }));
                   setFavVersion(v => v + 1);
-                  Swal.fire({ title: locale==='ar'? 'تمت الإضافة إلى المفضلة':'Added to favorites', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                  toastSuccess(locale==='ar'? 'تمت الإضافة إلى المفضلة':'Added to favorites', locale==='ar');
                 } else {
                   if (useCtx) {
                     (rest as any).removeFromWishlist!(String(mapped.id));
@@ -222,7 +222,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                   }
                   setWishOverrides(prev => ({ ...prev, [String(mapped.id)]: false }));
                   setFavVersion(v => v + 1);
-                  Swal.fire({ title: locale==='ar'? 'تمت الإزالة من المفضلة':'Removed from favorites', icon: 'info', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                  toastInfo(locale==='ar'? 'تمت الإزالة من المفضلة':'Removed from favorites', locale==='ar');
                 }
               }}
               title={locale==='ar'?'مفضلة':'Favorite'}
@@ -283,7 +283,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                     partNumber: mapped.partNumber,
                     originalPrice: mapped.originalPrice,
                   });
-                  Swal.fire({ title: locale==='ar'? 'تمت الإضافة إلى السلة':'Added to cart', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                  toastSuccess(locale==='ar'? 'تمت الإضافة إلى السلة':'Added to cart', locale==='ar');
                 }}
               >
                 <ShoppingCart className="w-4 h-4 mr-1" /> {locale==='ar' ? 'أضف للسلة' : 'Add'}
@@ -399,7 +399,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                                 }
                                 setWishOverrides(prev => ({ ...prev, [favId]: true }));
                                 setFavVersion(v => v + 1);
-                                Swal.fire({ title: locale==='ar'? 'تمت الإضافة إلى المفضلة':'Added to favorites', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                                toastSuccess(locale==='ar'? 'تمت الإضافة إلى المفضلة':'Added to favorites', locale==='ar');
                               } else {
                                 if (useCtx) {
                                   (rest as any).removeFromWishlist!(favId);
@@ -409,7 +409,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                                 }
                                 setWishOverrides(prev => ({ ...prev, [favId]: false }));
                                 setFavVersion(v => v + 1);
-                                Swal.fire({ title: locale==='ar'? 'تمت الإزالة من المفضلة':'Removed from favorites', icon: 'info', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                                toastInfo(locale==='ar'? 'تمت الإزالة من المفضلة':'Removed from favorites', locale==='ar');
                               }
                             }}
                             title={locale==='ar'?'مفضلة':'Favorite'}
@@ -470,7 +470,7 @@ export default function Rentals({ setCurrentPage, ...rest }: RentalsProps) {
                                 e.stopPropagation();
                                 const item = mapContractToCartItem(r, imgSrc);
                                 (rest as any)?.addToCart && (rest as any).addToCart(item);
-                                Swal.fire({ title: locale==='ar'? 'تمت الإضافة إلى السلة':'Added to cart', icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                                toastSuccess(locale==='ar'? 'تمت الإضافة إلى السلة':'Added to cart', locale==='ar');
                               }}
                             >
                               <ShoppingCart className="w-4 h-4 mr-1" /> {locale==='ar' ? 'أضف للسلة' : 'Add'}

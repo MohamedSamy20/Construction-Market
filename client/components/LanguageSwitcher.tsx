@@ -30,6 +30,12 @@ export default function LanguageSwitcher() {
       const segments = url.pathname.split('/')
       segments[1] = newLocale
       url.pathname = segments.join('/')
+      // Clean up stale page-specific params when toggling locale
+      const page = url.searchParams.get('page') || ''
+      const needsServiceId = page === 'technician-service-details'
+      const needsProjectId = page === 'technician-project-details'
+      if (!needsServiceId) url.searchParams.delete('serviceId')
+      if (!needsProjectId) url.searchParams.delete('projectId')
       window.history.replaceState({}, '', url.toString())
     } catch {}
 

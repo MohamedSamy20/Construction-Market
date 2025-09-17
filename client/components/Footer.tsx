@@ -15,6 +15,7 @@ import {
 import { useTranslation } from '../hooks/useTranslation';
 import { useState } from 'react';
 import Swal from 'sweetalert2';
+import { toastSuccess, toastError } from '../utils/alerts';
 
 interface FooterProps {
   setCurrentPage: (page: string) => void;
@@ -35,28 +36,12 @@ export default function Footer({ setCurrentPage }: FooterProps) {
     const trimmed = email.trim();
     if (!trimmed || !isValidEmail(trimmed)) {
       setEmailError(locale === 'en' ? 'Please enter a valid email address' : 'من فضلك أدخل بريدًا إلكترونيًا صالحًا');
-      Swal.fire({
-        title: locale === 'en' ? 'Invalid email' : 'بريد إلكتروني غير صالح',
-        text: locale === 'en' ? 'Please enter a valid email address' : 'يرجى إدخال بريد إلكتروني صحيح',
-        icon: 'error',
-        toast: true,
-        position: 'top-end',
-        showConfirmButton: false,
-        timer: 2500,
-      });
+      toastError(locale === 'en' ? 'Please enter a valid email address' : 'يرجى إدخال بريد إلكتروني صحيح', locale==='ar');
       return;
     }
 
     // Simulate subscription success
-    Swal.fire({
-      title: locale === 'en' ? 'Subscribed!' : 'تم الاشتراك!',
-      text: locale === 'en' ? 'You have been subscribed to our newsletter.' : 'تم اشتراكك في النشرة البريدية.',
-      icon: 'success',
-      toast: true,
-      position: 'top-end',
-      showConfirmButton: false,
-      timer: 2200,
-    });
+    toastSuccess(locale === 'en' ? 'Subscribed to newsletter' : 'تم الاشتراك في النشرة البريدية', locale==='ar');
 
     // Clear state
     setEmail("");
@@ -153,7 +138,7 @@ export default function Footer({ setCurrentPage }: FooterProps) {
                 <li><button onClick={() => setCurrentPage('home')} className="text-gray-300 hover:text-white transition-colors">{t('home')}</button></li>
                 <li><button onClick={() => setCurrentPage('about')} className="text-gray-300 hover:text-white transition-colors">{t('about')}</button></li>
                 <li><button onClick={() => setCurrentPage('products')} className="text-gray-300 hover:text-white transition-colors">{t('products')}</button></li>
-                <li><button onClick={() => setCurrentPage('home')} className="text-gray-300 hover:text-white transition-colors">{t('offers')}</button></li>
+                <li><button onClick={() => setCurrentPage('offers')} className="text-gray-300 hover:text-white transition-colors">{t('offers')}</button></li>
                 {/* Removed blog key as it's not present in translations */}
                 <li><button onClick={() => setCurrentPage('projects')} className="text-gray-300 hover:text-white transition-colors">{t('projects') || (locale==='ar'?'المشاريع':'Projects')}</button></li>
               </ul>

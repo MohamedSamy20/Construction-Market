@@ -1,7 +1,7 @@
 import { api } from '@/lib/api';
 
 export type VendorDto = {
-  id: string | number;
+  id: string;
   name: string;
   email?: string;
   phone?: string;
@@ -25,10 +25,10 @@ export async function listPendingVendorUsers() {
   return api.get<any[]>(`/api/Vendors/pending`, { auth: true });
 }
 
-export async function approveVendor(id: string | number) {
+export async function approveVendor(id: string ) {
   return api.patch<unknown>(`/api/Vendors/${id}/approve`, {}, { auth: true });
 }
 
-export async function suspendVendor(id: string | number) {
+export async function suspendVendor(id: string ) {
   return api.patch<unknown>(`/api/Vendors/${id}/suspend`, {}, { auth: true });
 }

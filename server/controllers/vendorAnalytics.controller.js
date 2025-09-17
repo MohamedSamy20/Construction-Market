@@ -1,5 +1,6 @@
 import { Order } from '../models/Order.js';
 import { User } from '../models/User.js';
+import { Product } from '../models/Product.js';
 
 export async function performanceSummary(req, res) {
   const vendorId = req.user._id;
@@ -86,4 +87,56 @@ export async function customersSummary(req, res) {
 export async function customersSeries(req, res) {
   // Placeholder series
   res.json([]);
+}
+
+// Top products by revenue/orders for the current vendor
+export async function topProducts(req, res) {
+  const vendorId = req.user._id;
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit || 10)));
+  const agg = await Order.aggregate([
+    { $match: { vendorId } },
+    { $unwind: '$items' },
+    { $group: {
+      _id: '$items.productId',
+      orders: { $sum: '$items.quantity' },
+      revenue: { $sum: { $multiply: ['$items.quantity', '$items.price'] } },
+    } },
+    { $sort: { revenue: -1 } },
+    { $limit: limit },
+  ]);
+  const ids = agg.map(a => a._id).filter(Boolean);
+  const products = await Product.find({ _id: { $in: ids } }).select('_id nameAr nameEn image images');
+  const byId = new Map(products.map(p => [String(p._id), p]));
+  const result = agg.map(a => {
+    const p = byId.get(String(a._id));
+    const name = p ? (p.nameAr || p.nameEn || '') : '';
+    const image = p ? (p.image || (Array.isArray(p.images) && p.images[0]?.imageUrl) || '') : '';
+    return { productId: String(a._id), name, orders: a.orders, revenue: a.revenue, image };
+  });
+  res.json(result);
+}
+
+// Sales by category for the current vendor
+export async function categoriesSales(req, res) {
+  const vendorId = req.user._id;
+  const agg = await Order.aggregate([
+    { $match: { vendorId } },
+    { $unwind: '$items' },
+    { $group: { _id: '$items.productId', qty: { $sum: '$items.quantity' }, revenue: { $sum: { $multiply: ['$items.quantity', '$items.price'] } } } },
+  ]);
+  const productIds = agg.map(a => a._id).filter(Boolean);
+  const products = await Product.find({ _id: { $in: productIds } }).select('_id categoryId categoryName');
+  const entries = agg.map(a => {
+    const p = products.find(pr => String(pr._id) === String(a._id));
+    return { category: p?.categoryName || String(p?.categoryId || 'Unknown'), qty: a.qty, revenue: a.revenue };
+  });
+  const byCat = new Map();
+  for (const e of entries) {
+    const row = byCat.get(e.category) || { value: 0, sales: 0 };
+    row.value += e.qty;
+    row.sales += e.revenue;
+    byCat.set(e.category, row);
+  }
+  const result = Array.from(byCat.entries()).map(([name, v]) => ({ name, value: v.value, sales: v.sales }));
+  res.json(result);
 }

@@ -13,7 +13,7 @@ const toSlug = (s) =>
 
 export async function list(req, res) {
   const { page = 1, pageSize = 20 } = req.query;
-  const q = {};
+  const q = { isApproved: true }; // public listing should show approved products only
   if (req.query.SearchTerm) {
     q.$or = [
       { nameEn: { $regex: req.query.SearchTerm, $options: 'i' } },
@@ -63,6 +63,7 @@ export async function create(req, res) {
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const body = req.body || {};
   body.merchantId = req.user._id;
+
   // Auto-approve if created by Admin
   if (req.user?.role === 'Admin') {
     body.isApproved = true;
@@ -72,8 +73,13 @@ export async function create(req, res) {
     body.slug = toSlug(body.nameEn || body.nameAr);
   }
   if (body.categoryId) {
-    const cat = await Category.findById(body.categoryId);
-    if (cat) body.categoryName = cat.nameEn;
+    try {
+      const cat = await Category.findById(body.categoryId);
+      if (!cat) return res.status(400).json({ success: false, message: 'Invalid categoryId' });
+      body.categoryName = cat.nameEn;
+    } catch (e) {
+      return res.status(400).json({ success: false, message: 'Invalid categoryId format' });
+    }
   }
   // Handle images: accept array of base64 or URLs; upload base64 to Cloudinary
   if (Array.isArray(body.images) && body.images.length) {
@@ -158,6 +164,9 @@ export async function remove(req, res) {
 export async function addImage(req, res) {
   const { id } = req.params;
   const payload = req.body || {};
+  if (!payload.imageUrl || typeof payload.imageUrl !== 'string') {
+    return res.status(400).json({ success: false, message: 'imageUrl is required' });
+  }
   const product = await Product.findOne({ _id: id, merchantId: req.user._id });
   if (!product) return res.status(404).json({ success: false, message: 'Product not found' });
   product.images.push({
@@ -209,6 +218,7 @@ export async function adminRejectProduct(req, res) {
 export const validateCreateProduct = [
   body('nameEn').isString().notEmpty(),
   body('nameAr').isString().notEmpty(),
+
   body('categoryId').notEmpty(),
   body('price').isNumeric(),
   body('stockQuantity').optional().isInt({ min: 0 }),
@@ -217,7 +227,7 @@ export const validateCreateProduct = [
 export const validateUpdateProduct = [
   body('nameEn').optional().isString().notEmpty(),
   body('nameAr').optional().isString().notEmpty(),
-  body('categoryId').optional().isString().notEmpty(),
+  body('categoryId').optional().isMongoId().withMessage('categoryId must be a valid Mongo ObjectId'),
   body('price').optional().isNumeric(),
   body('stockQuantity').optional().isInt({ min: 0 }),
 ];

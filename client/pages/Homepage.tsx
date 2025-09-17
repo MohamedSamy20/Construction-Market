@@ -13,7 +13,7 @@ export default function Homepage(context: RouteContext = {} as RouteContext) {
       <Header {...context} />
       <HeroSearch {...context} />
       <ProductCategories {...context} />
-      <ServicesSection />
+      {context?.user?.role === 'worker' && (<ServicesSection />)}
       <BestSellingProducts {...context} />
       <PlatformFeatures {...context} />
       <Footer {...context} />

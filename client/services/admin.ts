@@ -14,7 +14,7 @@ export type AdminUser = {
 };
 
 export async function getPendingServices() {
-  return api.get<{ success: boolean; items: Array<{ id: number; title: string; description?: string; merchantId?: string; payRate?: number; currency?: string; createdAt?: string }> }>(
+  return api.get<{ success: boolean; items: Array<{ id: string; title: string; description?: string; vendorId?: string; dailyWage?: number; total?: number; createdAt?: string }> }>(
     '/api/Admin/services/pending',
     { auth: true }
   );
@@ -49,11 +49,11 @@ export async function adminSetProductDiscount(id: number, discountPrice: number 
   return api.post(`/api/Admin/products/${id}/discount`, { discountPrice }, { auth: true });
 }
 
-export async function approveService(serviceId: number) {
+export async function approveService(serviceId: string) {
   return api.post<unknown>(`/api/Admin/services/${serviceId}/approve`, undefined, { auth: true });
 }
 
-export async function rejectService(serviceId: number, reason?: string) {
+export async function rejectService(serviceId: string, reason?: string) {
   return api.post<unknown>(`/api/Admin/services/${serviceId}/reject`, reason ?? '', { auth: true });
 }
 

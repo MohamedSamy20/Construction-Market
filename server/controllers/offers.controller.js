@@ -1,4 +1,7 @@
 import { Offer } from '../models/Offer.js';
+import { Service } from '../models/Service.js';
+import { Project } from '../models/Project.js';
+import { Notification } from '../models/Notification.js';
 import { body, validationResult } from 'express-validator';
 
 export const validateCreateOffer = [
@@ -69,6 +72,41 @@ export async function updateStatus(req, res) {
   if (!allowed.includes(Status)) return res.status(400).json({ success: false, message: 'Invalid status' });
   const updated = await Offer.findByIdAndUpdate(req.params.id, { status: Status }, { new: true });
   if (!updated) return res.status(404).json({ success: false, message: 'Offer not found' });
+  try {
+    // Determine target user to notify
+    let notifyUserId = null;
+    let role = null;
+    let title = 'Offer status updated';
+    let message = `Your offer has been ${Status}`;
+    if (updated.targetType === 'service' && updated.serviceId) {
+      const svc = await Service.findById(updated.serviceId).lean();
+      if (svc) {
+        // Notify technician about status change
+        notifyUserId = updated.technicianId;
+        role = 'technician';
+        title = Status === 'accepted' ? 'Offer accepted' : Status === 'rejected' ? 'Offer rejected' : 'Offer pending';
+        message = `Your offer on service has been ${Status}`;
+        // Also notify vendor when accepted
+        if (Status === 'accepted' && svc.vendorId) {
+          await Notification.create({ userId: svc.vendorId, role: 'vendor', type: 'offer.accepted', title: 'Offer accepted', message: 'You accepted a technician offer for your service.', data: { offerId: String(updated._id), serviceId: String(updated.serviceId) } });
+        }
+      }
+    } else if (updated.targetType === 'project' && updated.projectId) {
+      const prj = await Project.findById(updated.projectId).lean();
+      if (prj) {
+        notifyUserId = updated.technicianId;
+        role = 'technician';
+        title = Status === 'accepted' ? 'Offer accepted' : Status === 'rejected' ? 'Offer rejected' : 'Offer pending';
+        message = `Your offer on project has been ${Status}`;
+        if (Status === 'accepted' && prj.vendorId) {
+          await Notification.create({ userId: prj.vendorId, role: 'vendor', type: 'offer.accepted', title: 'Offer accepted', message: 'You accepted a technician offer for your project.', data: { offerId: String(updated._id), projectId: String(updated.projectId) } });
+        }
+      }
+    }
+    if (notifyUserId) {
+      await Notification.create({ userId: notifyUserId, role, type: `offer.${Status}`, title, message, data: { offerId: String(updated._id), targetType: updated.targetType, serviceId: updated.serviceId, projectId: updated.projectId } });
+    }
+  } catch {}
   res.json(updated);
 }
 

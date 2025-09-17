@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { toastSuccess, toastInfo } from "../utils/alerts";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import {
@@ -118,7 +119,6 @@ export default function ProductDetails({
   }, [JSON.stringify(selectedProduct)]);
   const [quantity, setQuantity] = useState(1);
   const [installSelected, setInstallSelected] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [userRating, setUserRating] = useState<number | null>(null);
   const [userComment, setUserComment] = useState("");
   
@@ -130,9 +130,33 @@ export default function ProductDetails({
   // Check if product is in wishlist using props
   const isWishlisted = isInWishlist && isInWishlist(product?.id || "1");
 
-  const images = (product as any)?.images || (
-    (product as any)?.image ? [(product as any).image] : []
-  );
+  const deriveImages = (p: any): string[] => {
+    try {
+      if (!p) return [];
+      const imgs = p.images;
+      if (Array.isArray(imgs)) {
+        // Support arrays of strings or objects with common keys
+        const mapped = imgs
+          .map((im: any) => {
+            if (!im) return null;
+            if (typeof im === 'string') return im;
+            return im.imageUrl || im.url || im.src || null;
+          })
+          .filter(Boolean) as string[];
+        if (mapped.length) return mapped;
+      }
+      // Single image common fields
+      const single = p.imageUrl || p.image || p.thumbnail || p.mainImage || null;
+      if (single) return [String(single)];
+      return [];
+    } catch { return []; }
+  };
+
+  const images = deriveImages(product);
+  // If product has no images, we'll optionally fall back to category image further below
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  // displayedImages will be recalculated after we (optionally) fetch a category image; define a placeholder now
+  let displayedImages: string[] = images;
   const discountPercentage =
     product && Number(product.originalPrice) > Number(product.price)
       ? Math.round(
@@ -166,7 +190,7 @@ export default function ProductDetails({
         id: product.id,
         name: getText(product.name),
         price: priceWithAddon,
-        image: images[0],
+        image: displayedImages[0],
         partNumber: product.partNumber,
         quantity,
         inStock: normalizedInStock,
@@ -215,18 +239,33 @@ export default function ProductDetails({
 
   // Resolve category name if categoryId exists
   const [categoryName, setCategoryName] = useState<string>("");
+  const [categoryImage, setCategoryImage] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const cid = (product as any)?.categoryId;
         if (!cid) { setCategoryName(""); return; }
-        const { ok, data } = await getCategoryById(Number(cid));
-        if (ok && data && !cancelled) setCategoryName(String((data as any)?.nameAr || (data as any)?.nameEn || ''));
+        const { ok, data } = await getCategoryById(String(cid));
+        if (ok && data && !cancelled) {
+          setCategoryName(String((data as any)?.nameAr || (data as any)?.nameEn || ''));
+          const cimg = (data as any)?.imageUrl || (data as any)?.ImageUrl || '';
+          if (cimg) setCategoryImage(String(cimg));
+        }
       } catch { setCategoryName(""); }
     })();
     return () => { cancelled = true; };
   }, [JSON.stringify((product as any)?.categoryId)]);
+
+  // Final displayed images with category fallback
+  displayedImages = images.length ? images : (categoryImage ? [categoryImage] : []);
+
+  // Keep selected index within bounds when images change
+  useEffect(() => {
+    if (selectedImageIndex > Math.max(0, displayedImages.length - 1)) {
+      setSelectedImageIndex(0);
+    }
+  }, [displayedImages.length]);
 
   if (!product) {
     return (
@@ -291,7 +330,7 @@ export default function ProductDetails({
           <div className="space-y-4">
             <div className="relative">
               <ImageWithFallback
-                src={images[selectedImageIndex]}
+                src={displayedImages[selectedImageIndex]}
                 alt={getText(product.name)}
                 className="w-full h-96 object-cover rounded-lg"
               />
@@ -306,7 +345,7 @@ export default function ProductDetails({
                 </Badge>
               )}
 
-              {images.length > 1 && (
+              {displayedImages.length > 1 && (
                 <>
                   <Button
                     variant="outline"
@@ -325,10 +364,10 @@ export default function ProductDetails({
                     className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white/90"
                     onClick={() =>
                       setSelectedImageIndex(
-                        Math.min(images.length - 1, selectedImageIndex + 1)
+                        Math.min(displayedImages.length - 1, selectedImageIndex + 1)
                       )
                     }
-                    disabled={selectedImageIndex === images.length - 1}
+                    disabled={selectedImageIndex === displayedImages.length - 1}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -336,9 +375,9 @@ export default function ProductDetails({
               )}
             </div>
 
-            {images.length > 1 && (
+            {displayedImages.length > 1 && (
               <div className="flex gap-2 overflow-x-auto">
-                {images.map((image: string, index: number) => (
+                {displayedImages.map((image: string, index: number) => (
                   <button
                     key={index}
                     onClick={() => setSelectedImageIndex(index)}
@@ -511,16 +550,10 @@ export default function ProductDetails({
                           partNumber: product?.partNumber,
                           inStock: product?.inStock || false
                         });
-                        Swal.fire({
-                          title: locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة',
-                          icon: 'success', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000
-                        });
+                        toastSuccess(locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة', locale==='ar');
                       } else {
                         removeFromWishlist && removeFromWishlist(product?.id || "1");
-                        Swal.fire({
-                          title: locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة',
-                          icon: 'info', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000
-                        });
+                        toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
                       }
                     }}
                     className={isWishlisted ? "text-red-500 border-red-500" : ""}

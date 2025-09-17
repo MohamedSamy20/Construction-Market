@@ -1,6 +1,7 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 // Default to the public backend URL if env is not provided (use HTTPS to avoid mixed content)
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 
 // Ensure base has no trailing slash to avoid double slashes when concatenating
@@ -70,6 +71,7 @@ export async function apiFetch<T>(path: string, options?: {
   auth?: boolean; // include bearer token from storage (default: true)
   signal?: AbortSignal;
 }): Promise<{ data: T | null; ok: boolean; status: number; error?: any }> {
+
   const url = path.startsWith('http')
     ? path
     : (() => {

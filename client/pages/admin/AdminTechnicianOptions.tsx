@@ -5,7 +5,7 @@ import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { RouteContext } from '../../components/Router';
-import { getAdminTechnicianOptions, saveAdminTechnicianOptions } from '../../lib/adminOptions';
+import { getAdminOption, setAdminOption } from '@/services/admin';
 
 export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
@@ -13,11 +13,23 @@ export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
   const [newItem, setNewItem] = useState('');
 
   useEffect(() => {
-    const opts = getAdminTechnicianOptions();
-    setSpecialties(opts.specialties);
-    const onUpdate = () => setSpecialties(getAdminTechnicianOptions().specialties);
-    if (typeof window !== 'undefined') window.addEventListener('admin_options_updated', onUpdate as any);
-    return () => { if (typeof window !== 'undefined') window.removeEventListener('admin_options_updated', onUpdate as any); };
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await getAdminOption('technician_specialties');
+        if (!cancelled && r.ok && r.data) {
+          try {
+            const arr = JSON.parse(String((r.data as any).value || '[]'));
+            if (Array.isArray(arr)) setSpecialties(arr.map((x:any)=>String(x)).filter(Boolean));
+          } catch {
+            setSpecialties([]);
+          }
+        }
+      } catch {
+        if (!cancelled) setSpecialties([]);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const addItem = () => {
@@ -25,14 +37,14 @@ export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
     if (!v) return;
     const next = Array.from(new Set([v, ...specialties]));
     setSpecialties(next);
-    saveAdminTechnicianOptions({ specialties: next });
+    void setAdminOption('technician_specialties', next);
     setNewItem('');
   };
 
   const removeItem = (name: string) => {
     const next = specialties.filter(c => c !== name);
     setSpecialties(next);
-    saveAdminTechnicianOptions({ specialties: next });
+    void setAdminOption('technician_specialties', next);
   };
 
   const editItem = (oldName: string) => {
@@ -42,7 +54,7 @@ export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
     if (!newName || newName === oldName) return;
     const next = Array.from(new Set(specialties.map(c => (c === oldName ? newName : c))));
     setSpecialties(next);
-    saveAdminTechnicianOptions({ specialties: next });
+    void setAdminOption('technician_specialties', next);
   };
 
   return (

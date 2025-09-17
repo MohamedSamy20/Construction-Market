@@ -8,13 +8,19 @@ export type SearchFilterDto = {
   sortDirection?: 'asc' | 'desc';
 };
 
+export type ProjectStatus = 'Draft' | 'Published' | 'InBidding' | 'InProgress' | 'Completed' | string;
+
 export type ProjectDto = {
-  id: number;
-  title?: string;
+  id: string;
+  title: string;
   description?: string;
+  customerId: string;
+  categoryId?: number;
+  total?: number;
+  days?: number;
+  currency?: string;
+  status?: ProjectStatus;
   createdAt?: string;
-  views?: number;
-  status?: string;
 };
 
 export type PagedResultDto<T> = {
@@ -39,13 +45,13 @@ export async function getOpenProjects() {
   return api.get<ProjectDto[]>(`/api/Projects/open`);
 }
 
-export async function getProjectById(id: number) {
-  return api.get<ProjectDto>(`/api/Projects/${id}`, { auth: true });
+export async function getProjectById(id: string) {
+  return api.get<ProjectDto>(`/api/Projects/${encodeURIComponent(id)}`, { auth: true });
 }
 
 export type BidDto = {
-  id: number;
-  projectId: number;
+  id: string;
+  projectId: string;
   merchantId?: string;
   amount?: number;
   price?: number;
@@ -55,25 +61,25 @@ export type BidDto = {
   status?: string;
 };
 
-export async function getProjectBids(projectId: number) {
-  return api.get<BidDto[]>(`/api/Projects/${projectId}/bids`, { auth: true });
+export async function getProjectBids(projectId: string) {
+  return api.get<BidDto[]>(`/api/Projects/${encodeURIComponent(projectId)}/bids`, { auth: true });
 }
 
-export async function createBid(projectId: number, payload: { price: number; days: number; message?: string }) {
+export async function createBid(projectId: string, payload: { price: number; days: number; message?: string }) {
   // Backend expects CreateBidDto, using body keys as-is is fine
-  return api.post<BidDto>(`/api/Projects/${projectId}/bids`, { price: payload.price, days: payload.days, message: payload.message ?? '' }, { auth: true });
+  return api.post<BidDto>(`/api/Projects/${encodeURIComponent(projectId)}/bids`, { price: payload.price, days: payload.days, message: payload.message ?? '' }, { auth: true });
 }
 
-export async function selectBid(projectId: number, bidId: number) {
-  return api.post<{ success: boolean; message: string }>(`/api/Projects/${projectId}/select-bid/${bidId}`, null, { auth: true });
+export async function selectBid(projectId: string, bidId: string) {
+  return api.post<{ success: boolean; message: string }>(`/api/Projects/${encodeURIComponent(projectId)}/select-bid/${encodeURIComponent(bidId)}`, null, { auth: true });
 }
 
-export async function acceptBid(bidId: number) {
-  return api.post<{ success: boolean; message: string }>(`/api/Projects/bids/${bidId}/accept`, null, { auth: true });
+export async function acceptBid(bidId: string | number) {
+  return api.post<{ success: boolean; message: string }>(`/api/Projects/bids/${encodeURIComponent(String(bidId))}/accept`, null, { auth: true });
 }
 
-export async function rejectBid(bidId: number, reason?: string) {
-  return api.post<{ success: boolean; message: string }>(`/api/Projects/bids/${bidId}/reject`, reason ?? '', { auth: true });
+export async function rejectBid(bidId: string | number, reason?: string) {
+  return api.post<{ success: boolean; message: string }>(`/api/Projects/bids/${encodeURIComponent(String(bidId))}/reject`, reason ?? '', { auth: true });
 }
 
 export async function getMyBids() {
@@ -102,14 +108,15 @@ export async function createProject(payload: CreateProjectDto) {
   return api.post<ProjectDto>(`/api/Projects`, payload, { auth: true });
 }
 
-export async function updateProject(id: number | string, payload: CreateProjectDto) {
-  return api.put<ProjectDto>(`/api/Projects/${id}`, payload, { auth: true });
+export async function updateProject(id: string | number, payload: CreateProjectDto) {
+  return api.put<ProjectDto>(`/api/Projects/${encodeURIComponent(String(id))}`, payload, { auth: true });
 }
 
-export async function deleteProject(id: number | string) {
-  return api.del<{ success: boolean }>(`/api/Projects/${id}`, { auth: true });
+export async function deleteProject(id: string | number) {
+  return api.del<{ success: boolean }>(`/api/Projects/${encodeURIComponent(String(id))}`, { auth: true });
 }
 
 export async function getMyProjects() {
   return api.get<ProjectDto[]>(`/api/Projects/customer/my-projects`, { auth: true });
 }
+

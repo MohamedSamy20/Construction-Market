@@ -15,6 +15,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { toastError, toastSuccess } from '../../utils/alerts';
 import { getMyProducts } from '@/services/products';
 import { listMyRentals, createRental, type CreateRentalInput, updateRental, deleteRental, listRentalMessages, replyRentalMessage } from '@/services/rentals';
+import { api } from '@/lib/api';
 import { getCommissionRates } from '@/services/commissions';
 
 // This page mirrors VendorProducts but for rentals. It reuses ProductForm and ProductItem for speed.
@@ -60,6 +61,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const [securityDeposit, setSecurityDeposit] = useState<string>('');
   const [currency, setCurrency] = useState<string>('SAR');
   const [images, setImages] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   // Delivery/Pickup removed from UI for now
   const [requiresDelivery, setRequiresDelivery] = useState<boolean>(false);
   const [deliveryAddress, setDeliveryAddress] = useState<string>('');
@@ -193,7 +195,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const openMessages = async (r:any) => {
     setMsgTarget(r); setMsgOpen(true); setMessages([]); setMsgReply(''); setMsgLoading(true);
     try {
-      const res = await listRentalMessages(Number(r.id));
+      const res = await listRentalMessages(String(r.id));
       if (res.ok && Array.isArray(res.data)) setMessages(res.data as any[]);
     } finally { setMsgLoading(false); }
   };
@@ -202,10 +204,10 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     if (!msgTarget || !msgReply.trim()) return;
     setMsgLoading(true);
     try {
-      const res = await replyRentalMessage(Number(msgTarget.id), msgReply.trim());
+      const res = await replyRentalMessage(String(msgTarget.id), msgReply.trim());
       if (res.ok) {
         setMsgReply('');
-        const r2 = await listRentalMessages(Number(msgTarget.id));
+        const r2 = await listRentalMessages(String(msgTarget.id));
         if (r2.ok && Array.isArray(r2.data)) setMessages(r2.data as any[]);
         // refresh counts
         const fresh = await listMyRentals();
@@ -232,7 +234,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     if (!editTarget) return;
     try {
       setSaving(true);
-      const res = await updateRental(Number(editTarget.id), {
+      const res = await updateRental(String(editTarget.id), {
         startDate: editStart,
         endDate: editEnd,
         dailyRate: Number(editRate||0),
@@ -240,7 +242,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         currency: editCurrency,
         specialInstructions: editSpecial,
         usageNotes: editUsage,
-        productId: editProductId ? Number(editProductId) : undefined,
+        productId: editProductId ? String(editProductId) : undefined,
       });
       if (res.ok) {
         toastSuccess(locale==='ar'? 'تم تحديث العقد' : 'Rental updated', locale==='ar');
@@ -256,7 +258,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const removeRental = async (r:any) => {
     try {
       if (!confirm(locale==='ar'? 'هل تريد حذف هذا العقد؟' : 'Delete this rental?')) return;
-      const res = await deleteRental(Number(r.id));
+      const res = await deleteRental(String(r.id));
       if (res.ok) {
         toastSuccess(locale==='ar'? 'تم حذف العقد' : 'Rental deleted', locale==='ar');
         const fresh = await listMyRentals();
@@ -271,19 +273,27 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
 
   const submitRental = async () => {
     try {
-      // If no matched product, fallback to first available product owned by merchant.
+      // If no matched product, allow creation without linking a product (backend supports optional productId)
       const effectiveProductId = productId || (myProducts?.[0]?.id ? String(myProducts[0].id) : '');
-      if (!effectiveProductId) {
-        toastError(locale==='ar'? 'لا يوجد منتج مسجل لربط العقد به. يرجى إضافة منتج واحد على الأقل.' : 'No product available to link the rental. Please add at least one product.', locale==='ar');
-        return;
-      }
       if (!startDate || !endDate || !dailyRate || !securityDeposit) {
         toastError(locale==='ar'? 'يرجى تعبئة الحقول المطلوبة' : 'Please fill required fields', locale==='ar');
         return;
       }
       setSaving(true);
+      // Upload first image if provided
+      let uploadedUrl: string | undefined = undefined;
+      try {
+        if (imageFiles.length > 0) {
+          const up = await api.uploadFiles([imageFiles[0]], 'images');
+          if (up.ok && up.data && Array.isArray((up.data as any).items) && (up.data as any).items[0]?.url) {
+            uploadedUrl = (up.data as any).items[0].url as string;
+          }
+        }
+      } catch {}
+
       const payload: CreateRentalInput = {
-        productId: Number(effectiveProductId),
+        productId: effectiveProductId ? String(effectiveProductId) : undefined,
+        productName: machineName ? machineName.trim() : undefined,
         customerId: (customerId || '').trim(),
         startDate, endDate,
         dailyRate: Number(dailyRate),
@@ -294,6 +304,8 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         requiresPickup: false,
         specialInstructions: [specialInstructions, machineName ? `${locale==='ar' ? 'اسم الآلة' : 'Machine'}: ${machineName}` : ''].filter(Boolean).join(' | ') || undefined,
         usageNotes: usageNotes || undefined,
+        // Attach image url if uploaded
+        ...(uploadedUrl ? { imageUrl: uploadedUrl } as any : {}),
       };
       const res = await createRental(payload);
       if (res.ok) {
@@ -368,7 +380,10 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                             fr.onload = ()=> resolve(String(fr.result || ''));
                             fr.readAsDataURL(file);
                           }));
-                          Promise.all(readers).then((base64s)=> setImages(prev=> [...prev, ...base64s]));
+                          Promise.all(readers).then((base64s)=> {
+                            setImages(prev=> [...prev, ...base64s]);
+                            setImageFiles(prev => [...prev, ...files]);
+                          });
                         }}
                       />
                       {images.length > 0 && (
@@ -385,7 +400,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                               type="button"
                               className="absolute -top-1 -right-1 bg-white/90 border rounded-full w-5 h-5 text-xs"
                               title={locale==='ar'? 'حذف' : 'Remove'}
-                              onClick={()=> setImages(prev=> prev.filter((_,i)=> i!==idx))}
+                              onClick={()=> { setImages(prev=> prev.filter((_,i)=> i!==idx)); setImageFiles(prev => prev.filter((_,i)=> i!==idx)); }}
                             >×</button>
                           </div>
                         ))}
@@ -520,7 +535,11 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                     <CardContent className="p-4">
                       <div className="relative mb-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={rental.imageUrl || ''} alt={String(rental.productName || '')} className="w-full h-40 object-cover rounded bg-gray-100" />
+                        {(() => {
+                          const fallback = (myProducts || []).find((p:any)=> String(p.id) === String(rental.productId))?.image || '';
+                          const src = rental.imageUrl || fallback || '';
+                          return <img src={src} alt={String(rental.productName || '')} className="w-full h-40 object-cover rounded bg-gray-100" />;
+                        })()}
                         <span className="absolute top-2 right-2 text-xs bg-primary text-primary-foreground rounded px-2 py-0.5">{locale==='ar'? 'عقد' : 'Contract'}</span>
                       </div>
                       <div className="font-medium line-clamp-1">{rental.productName || `#${rental.productId}`}</div>

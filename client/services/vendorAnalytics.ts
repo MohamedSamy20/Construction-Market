@@ -41,3 +41,15 @@ export async function getCustomersSummary() {
 export async function getCustomersSeries(months = 6) {
   return api.get<CustomersSeriesPoint[]>(`/api/VendorAnalytics/customers/series?months=${months}`, { auth: true });
 }
+
+// Top products
+export type TopProduct = { productId: string; name: string; orders: number; revenue: number; image?: string };
+export async function getTopProducts(limit = 10) {
+  return api.get<TopProduct[]>(`/api/VendorAnalytics/products/top?limit=${limit}`, { auth: true });
+}
+
+// Categories sales
+export type CategorySales = { name: string; value: number; sales: number };
+export async function getCategorySales() {
+  return api.get<CategorySales[]>(`/api/VendorAnalytics/categories/sales`, { auth: true });
+}

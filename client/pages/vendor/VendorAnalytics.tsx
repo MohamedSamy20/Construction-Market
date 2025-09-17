@@ -10,25 +10,9 @@ import { RouteContext } from '../../components/Router';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { useTranslation } from '../../hooks/useTranslation';
-import { getPerformanceSummary, getPerformanceSeries, getCustomersSummary, getCustomersSeries, type PerformanceSummary, type PerformanceSeriesPoint, type CustomersSummary, type CustomersSeriesPoint } from '@/services/vendorAnalytics';
+import { getPerformanceSummary, getPerformanceSeries, getCustomersSummary, getCustomersSeries, getTopProducts, getCategorySales, type PerformanceSummary, type PerformanceSeriesPoint, type CustomersSummary, type CustomersSeriesPoint, type TopProduct, type CategorySales } from '@/services/vendorAnalytics';
 
 type VendorAnalyticsProps = Partial<RouteContext>;
-
-// Category/product mock data (kept for visual parity)
-const categoryData = [
-  { name: 'فلاتر', value: 35, sales: 15400 },
-  { name: 'إطارات', value: 25, sales: 11200 },
-  { name: 'زيوت', value: 20, sales: 8900 },
-  { name: 'مكابح', value: 12, sales: 5600 },
-  { name: 'إضاءة', value: 8, sales: 3200 }
-];
-
-const topProducts = [
-  { name: 'فلتر زيت محرك تويوتا كامري', views: 1250, orders: 145, conversion: 11.6, revenue: 12325 },
-  { name: 'إطار ميشلين بريمير 225/65R17', views: 2100, orders: 89, conversion: 4.2, revenue: 40050 },
-  { name: 'بطارية AC Delco 60 أمبير', views: 890, orders: 67, conversion: 7.5, revenue: 12060 },
-  { name: 'مصابيح LED فيليبس للمقدمة', views: 1890, orders: 234, conversion: 12.4, revenue: 22230 }
-];
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
@@ -36,16 +20,16 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
   const [mounted, setMounted] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const { t, locale } = useTranslation();
-  // Provide a safe fallback to satisfy components requiring a non-optional setter
   const safeSetCurrentPage = setCurrentPage ?? (() => {});
 
-  // Analytics state
   const [perfSummary, setPerfSummary] = useState<PerformanceSummary | null>(null);
   const [perfSeries, setPerfSeries] = useState<PerformanceSeriesPoint[]>([]);
   const [custSummary, setCustSummary] = useState<CustomersSummary | null>(null);
   const [custSeries, setCustSeries] = useState<CustomersSeriesPoint[]>([]);
+  const [topProds, setTopProds] = useState<TopProduct[]>([]);
+  const [catSales, setCatSales] = useState<CategorySales[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Derive chart-friendly data keeping same formatting
   const salesData = useMemo(() => {
     const monthName = (key: string) => {
       const [y, m] = key.split('-').map(Number);
@@ -56,7 +40,6 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
       month: monthName(p.key),
       sales: Number(p.sales || 0),
       orders: Number(p.orders || 0),
-      // No views data yet; keep visual slot by mirroring orders
       views: Number(p.orders || 0),
       customers: 0,
     }));
@@ -98,20 +81,24 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
     let cancelled = false;
     (async () => {
       try {
-        const [ps, pser, cs, cser] = await Promise.all([
+        const [ps, pser, cs, cser, tp, cats] = await Promise.all([
           getPerformanceSummary(),
           getPerformanceSeries(6),
           getCustomersSummary(),
           getCustomersSeries(6),
+          getTopProducts(10),
+          getCategorySales(),
         ]);
         if (!cancelled) {
           if (ps.ok) setPerfSummary(ps.data as PerformanceSummary);
           if (pser.ok) setPerfSeries(pser.data as PerformanceSeriesPoint[]);
           if (cs.ok) setCustSummary(cs.data as CustomersSummary);
           if (cser.ok) setCustSeries(cser.data as CustomersSeriesPoint[]);
+          if (tp.ok) setTopProds(tp.data as TopProduct[]);
+          if (cats.ok) setCatSales(cats.data as CategorySales[]);
         }
       } catch {}
-      if (!cancelled) setMounted(true);
+      if (!cancelled) { setMounted(true); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -304,31 +291,26 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {topProducts.map((product, index) => (
+                  {(topProds.length ? topProds : []).map((product, index) => (
                     <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">
                         <h4 className="font-medium">{product.name}</h4>
                         <div className="grid grid-cols-4 gap-4 mt-2 text-sm">
                           <div>
-                            <span className="text-muted-foreground">{t('vaViewsLabel')}: </span>
-                            <span className="font-medium">{product.views.toLocaleString(locale === 'en' ? 'en' : 'ar')}</span>
-                          </div>
-                          <div>
                             <span className="text-muted-foreground">{t('vaOrdersLabel')}: </span>
-                            <span className="font-medium">{product.orders}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">{t('vaConversionLabel')}: </span>
-                            <span className="font-medium">{product.conversion}%</span>
+                            <span className="font-medium">{Number(product.orders||0).toLocaleString(locale === 'en' ? 'en' : 'ar')}</span>
                           </div>
                           <div>
                             <span className="text-muted-foreground">{t('vaRevenueLabel')}: </span>
-                            <span className="font-medium text-primary">{product.revenue.toLocaleString(locale === 'en' ? 'en' : 'ar')} {locale === 'en' ? 'SAR' : 'ر.س'}</span>
+                            <span className="font-medium text-primary">{Number(product.revenue||0).toLocaleString(locale === 'en' ? 'en' : 'ar')} {locale === 'en' ? 'SAR' : 'ر.س'}</span>
                           </div>
                         </div>
                       </div>
                     </div>
                   ))}
+                  {(!loading && topProds.length === 0) && (
+                    <div className="text-sm text-muted-foreground">{locale==='ar'?'لا توجد بيانات منتجات بعد':'No product data yet'}</div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -364,7 +346,7 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
-                        data={categoryData}
+                        data={catSales}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
@@ -373,7 +355,7 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {categoryData.map((entry, index) => (
+                        {catSales.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
@@ -389,7 +371,7 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {categoryData.map((category, index) => (
+                    {catSales.map((category, index) => (
                       <div key={index} className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div 
@@ -399,11 +381,14 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
                           <span>{category.name}</span>
                         </div>
                         <div className="text-left">
-                          <div className="font-medium">{category.sales.toLocaleString(locale === 'en' ? 'en' : 'ar')} {locale === 'en' ? 'SAR' : 'ر.س'}</div>
-                          <div className="text-sm text-muted-foreground">{category.value}% {t('vaOfSales')}</div>
+                          <div className="font-medium">{Number(category.sales||0).toLocaleString(locale === 'en' ? 'en' : 'ar')} {locale === 'en' ? 'SAR' : 'ر.س'}</div>
+                          <div className="text-sm text-muted-foreground">{Number(category.value||0)}% {t('vaOfSales')}</div>
                         </div>
                       </div>
                     ))}
+                    {(!loading && catSales.length === 0) && (
+                      <div className="text-sm text-muted-foreground">{locale==='ar'?'لا توجد بيانات فئات بعد':'No category data yet'}</div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

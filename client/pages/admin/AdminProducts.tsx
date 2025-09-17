@@ -46,7 +46,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       try {
         const r = await getAllCategories();
         if (r.ok && Array.isArray(r.data)) {
-          // Backend returns Mongo documents with _id, map to id for UI
+
           setCategories(r.data.map((c: any) => ({ id: c._id || c.id, name: (c.nameAr || c.nameEn || String(c._id || c.id)) })));
         } else { setCategories([]); }
       } catch { setCategories([]); }
@@ -141,8 +141,10 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       nameEn: String(data.nameEn || ''),
       descriptionAr: String(data.descriptionAr || ''),
       descriptionEn: String(data.descriptionEn || ''),
+
       // Send Mongo ObjectId as string
       categoryId: data.categoryId ? String(data.categoryId) : undefined,
+
       price: original > 0 ? original : current,
       discountPrice: original > 0 ? current : null,
       stockQuantity: Number(data.stock || 0),
@@ -164,6 +166,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
   const removeRow = async (r: ProductRow) => { const realId = String((r as any).backendId || r.id); await deleteProduct(realId as any); await reload(); };
 
   const doApproveProduct = async (id: string) => {
+
     try { const r = await approveProductAdmin(id); if (r.ok) await reload(); } catch {}
   };
   const doRejectProduct = async (id: string) => {
@@ -209,7 +212,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
             {pendingError && <div className="text-sm text-red-600 mb-2">{pendingError}</div>}
             <div className="space-y-3">
               {pending.map((p: any) => (
-                <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                <div key={String(p.id)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
                   <div>
                     <div className="font-medium text-sm">{p.nameAr || p.nameEn || p.name}</div>
                     <div className="text-xs text-muted-foreground">التاجر: {p.merchantName || p.merchantId}</div>

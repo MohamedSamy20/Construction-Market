@@ -60,7 +60,8 @@ export default function VendorProjectDetails({ setCurrentPage, ...context }: Pro
       try {
         const id = typeof window !== 'undefined' ? window.localStorage.getItem('selected_vendor_project_id') : null;
         if (!id) { setLoading(false); return; }
-        const { ok, data } = await getProjectById(Number(id));
+        const { ok, data } = await getProjectById(String(id));
+
         if (ok && data) {
           const p: any = data;
           // Normalize fields from various casings/locations
@@ -580,7 +581,8 @@ export default function VendorProjectDetails({ setCurrentPage, ...context }: Pro
                           (async () => {
                             try {
                               setSaving(true);
-                              const res = await createBid(Number(project.id), { price: vP, days: vD, message: offerMessage });
+                              const res = await createBid(String(project.id), { price: vP, days: vD, message: offerMessage });
+
                               if (res.ok) {
                                 setHasSubmitted(true);
                                 try {
