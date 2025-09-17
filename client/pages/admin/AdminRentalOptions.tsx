@@ -16,7 +16,7 @@ export default function AdminRentalOptions(props: Partial<RouteContext>) {
   const [query, setQuery] = useState('');
   const [available, setAvailable] = useState<ProductDto[]>([]);
   const [rented, setRented] = useState<RentalDto[]>([]);
-  const [productMap, setProductMap] = useState<Record<number, ProductDto>>({});
+  const [productMap, setProductMap] = useState<Record<string, ProductDto>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -29,12 +29,12 @@ export default function AdminRentalOptions(props: Partial<RouteContext>) {
           if (r.ok && Array.isArray(r.data)) setRented(r.data as RentalDto[]);
 
           // Build a map of known products from available list
-          const baseMap: Record<number, ProductDto> = {};
+          const baseMap: Record<string, ProductDto> = {};
           if (a.ok && Array.isArray(a.data)) {
             for (const p of a.data as ProductDto[]) baseMap[p.id] = p;
           }
           // Determine missing productIds from rentals
-          const missingIds = new Set<number>();
+          const missingIds = new Set<string>();
           if (r.ok && Array.isArray(r.data)) {
             for (const rent of r.data as RentalDto[]) {
               if (rent.productId && !baseMap[rent.productId]) missingIds.add(rent.productId);

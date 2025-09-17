@@ -31,12 +31,14 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
         if (cancelled) return;
         setServices(data as any[]);
         // Fetch offers for each service
+        const validServices = (data as any[]).filter((s:any) => s && typeof s.id !== 'undefined' && s.id !== null && String(s.id) !== 'undefined');
         const entries = await Promise.all(
-          (data as any[]).map(async (s:any) => {
+          validServices.map(async (s:any) => {
+            const sid = String(s.id);
             try {
-              const r = await listOffersForService(String(s.id));
-              return [String(s.id), (r.ok && Array.isArray(r.data) ? r.data as OfferDto[] : [])] as [string, OfferDto[]];
-            } catch { return [String(s.id), []] as [string, OfferDto[]]; }
+              const r = await listOffersForService(sid);
+              return [sid, (r.ok && Array.isArray(r.data) ? (r.data as OfferDto[]) : [])] as [string, OfferDto[]];
+            } catch { return [sid, []] as [string, OfferDto[]]; }
           })
         );
         if (!cancelled) setRequests(Object.fromEntries(entries));
@@ -81,7 +83,7 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
       if (res.ok) {
         // Refresh the service offers containing this request
         const affectedServiceId = res.data?.serviceId ?? myRequests.find(r=> String(r.id)===String(reqId))?.serviceId;
-        if (affectedServiceId) {
+        if (affectedServiceId && String(affectedServiceId) !== 'undefined') {
           try {
             const r = await listOffersForService(String(affectedServiceId));
             setRequests(prev => ({ ...prev, [String(affectedServiceId)]: (r.ok && Array.isArray(r.data) ? r.data as OfferDto[] : []) }));
@@ -177,21 +179,26 @@ export default function VendorServiceApplicants({ setCurrentPage, ...context }: 
                                   try {
                                     const sid = String(s.id);
                                     const tid = String(r.technicianId);
-                                    // Try get conversation by keys, otherwise create
-                                    let convId: string | null = null;
-                                    try {
-                                      const found = await getConversationByKeys(sid, tid);
-                                      if (found.ok && (found.data as any)?.id) convId = String((found.data as any).id);
-                                    } catch {}
-                                    if (!convId) {
-                                      const cr = await createConversation(sid, tid);
-                                      if (cr.ok && (cr.data as any)?.id) convId = String((cr.data as any).id);
-                                    }
+                                    // Directly create conversation (idempotent server-side behavior ensured via findOne before create)
+                                    const cr = await createConversation(sid, tid);
+                                    const convId = (cr.ok && (cr.data as any)?.id) ? String((cr.data as any).id) : null;
                                     if (convId) {
                                       try { window.localStorage.setItem('chat_conversation_id', convId); } catch {}
                                       try { window.localStorage.setItem('chat_technician_id', tid); } catch {}
                                       try { window.localStorage.setItem('chat_service_id', sid); } catch {}
                                       setCurrentPage && setCurrentPage('vendor-chat');
+                                    } else {
+                                      // Fallback: attempt by-keys only if create did not return id
+                                      try {
+                                        const found = await getConversationByKeys(sid, tid);
+                                        const id = (found.ok && (found.data as any)?.id) ? String((found.data as any).id) : null;
+                                        if (id) {
+                                          try { window.localStorage.setItem('chat_conversation_id', id); } catch {}
+                                          try { window.localStorage.setItem('chat_technician_id', tid); } catch {}
+                                          try { window.localStorage.setItem('chat_service_id', sid); } catch {}
+                                          setCurrentPage && setCurrentPage('vendor-chat');
+                                        }
+                                      } catch {}
                                     }
                                   } catch {}
                                 }}

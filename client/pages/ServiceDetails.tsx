@@ -10,6 +10,7 @@ import type { RouteContext } from "../components/routerTypes";
 import { getServiceById, deleteService as apiDeleteService } from "@/services/servicesCatalog";
 import { Info, Package, Calendar, ClipboardList, Check, X } from "lucide-react";
 import { listOffersForService, updateOfferStatus, type OfferDto } from "@/services/offers";
+import { getConversationByKeys, createConversation } from "@/services/chat";
 
 interface ServiceDetailsProps extends Partial<RouteContext> {}
 
@@ -40,6 +41,7 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
   const [service, setService] = useState<Service | null>(null);
   const [proposals, setProposals] = useState<OfferDto[]>([]);
   const usersById = useMemo(() => ({} as Record<string,string>), []);
+  const technicianId = String((context as any)?.user?.id || '');
 
   // Load selected service by id: backend first, then fallback to localStorage
   useEffect(() => {
@@ -47,13 +49,44 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
     (async () => {
       try {
         if (typeof window === 'undefined') return;
-        const id = window.localStorage.getItem('selected_service_id');
-        if (!id) return;
+        // Prefer serviceId from URL param if present
+        let id: string | null = null;
+        try {
+          const url = new URL(window.location.href);
+          const qid = url.searchParams.get('serviceId');
+          if (qid) id = qid;
+        } catch {}
+        if (!id) id = window.localStorage.getItem('selected_service_id');
+        if (!id) {
+          // No id anywhere -> redirect back
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('serviceId');
+            url.searchParams.set('page', 'technician-services');
+            window.history.replaceState({}, '', url.toString());
+          } catch {}
+          setCurrentPage && setCurrentPage('technician-services');
+          return;
+        }
+        const validObjectId = /^[a-f0-9]{24}$/i.test(String(id));
+        if (!validObjectId) {
+          // Invalid id -> redirect back
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('serviceId');
+            url.searchParams.set('page', 'technician-services');
+            window.history.replaceState({}, '', url.toString());
+          } catch {}
+          setCurrentPage && setCurrentPage('technician-services');
+          return;
+        }
         // Try backend
         try {
-          const { ok, data } = await getServiceById(id);
-          if (!cancelled && ok && data) {
-            setService(data as any);
+          if (validObjectId) {
+            const { ok, data } = await getServiceById(id);
+            if (!cancelled && ok && data) {
+              setService(data as any);
+            }
           }
         } catch {}
         // Fallback to local list if still null
@@ -70,7 +103,7 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
         // Load technician offers (proposals) for this service from backend if we have a service id
         try {
           const sid = id ?? ((service as any)?.id ? String((service as any).id) : null);
-          if (sid != null) {
+          if (sid != null && /^[a-f0-9]{24}$/i.test(String(sid))) {
             const r = await listOffersForService(String(sid));
             if (!cancelled && r.ok && Array.isArray(r.data)) setProposals(r.data as OfferDto[]);
           }
@@ -206,6 +239,36 @@ export default function ServiceDetails({ setCurrentPage, ...context }: ServiceDe
                 <CardTitle>{locale === 'ar' ? 'عروض مقدّمة' : 'Submitted Proposals'}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm"
+                    onClick={async ()=>{
+                      try {
+                        const sid = (service as any)?.id ? String((service as any).id) : (typeof window!=='undefined' ? String(window.localStorage.getItem('selected_service_id')||'') : '');
+                        if (!sid || !/^[a-f0-9]{24}$/i.test(sid)) { alert(locale==='ar' ? 'معرّف الخدمة غير صالح' : 'Invalid service id'); return; }
+                        if (!technicianId) { alert(locale==='ar' ? 'الرجاء تسجيل الدخول كفني' : 'Please login as a technician'); return; }
+                        // Try find conversation by keys, else create
+                        let convId: string | null = null;
+                        try {
+                          const found = await getConversationByKeys(sid, technicianId);
+                          if (found.ok && (found.data as any)?.id) convId = String((found.data as any).id);
+                        } catch {}
+                        if (!convId) {
+                          const cr = await createConversation(sid);
+                          if (cr.ok && (cr.data as any)?.id) convId = String((cr.data as any).id);
+                        }
+                        if (convId) {
+                          try { window.localStorage.setItem('chat_conversation_id', convId); } catch {}
+                          try { window.localStorage.setItem('chat_service_id', sid); } catch {}
+                          try { window.localStorage.setItem('chat_technician_id', technicianId); } catch {}
+                          setCurrentPage && setCurrentPage('technician-chat');
+                        }
+                      } catch {}
+                    }}
+                  >
+                    {locale==='ar' ? 'مراسلة التاجر' : 'Message Vendor'}
+                  </button>
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">{locale === 'ar' ? 'عدد العروض' : 'Total'}</span>
                   <Badge variant="outline">{proposals.length}</Badge>

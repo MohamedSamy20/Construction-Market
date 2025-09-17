@@ -42,7 +42,7 @@ export default function TechnicianProjectDetails({ setCurrentPage, ...context }:
           id = url.searchParams.get('projectId');
         } catch {}
         if (!id) { setLoading(false); return; }
-        const { ok, data } = await getProjectById(Number(id));
+        const { ok, data } = await getProjectById(String(id));
         if (ok && data) setProject(data as any);
         else setProject(null);
       } finally { setLoading(false); }

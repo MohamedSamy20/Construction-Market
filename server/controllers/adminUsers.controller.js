@@ -23,7 +23,11 @@ export async function adminListUsers(req, res) {
   const { role, status } = req.query || {};
   const q = {};
   // Role filter (Admin | Merchant | Technician | Customer)
-  if (role) q.role = role;
+  if (role) {
+    // Treat 'Technician' filter as both 'Technician' and legacy 'Worker'
+    if (String(role) === 'Technician') q.role = { $in: ['Technician', 'Worker'] };
+    else q.role = role;
+  }
   // Status mapping
   if (status) {
     const s = String(status).toLowerCase();

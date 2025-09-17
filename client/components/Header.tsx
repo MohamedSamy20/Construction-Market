@@ -11,6 +11,8 @@ import { useEffect, useState } from 'react';
 import { logout as apiLogout } from '@/services/auth';
 import { getVendorMessageCount, getRecentVendorMessages, getCustomerMessageCount, getCustomerRecentMessages } from '@/services/rentals';
 import { getVendorProjectMessageCount, getVendorProjectRecentMessages, getCustomerProjectMessageCount, getCustomerProjectRecentMessages } from '@/services/projectChat';
+import { listMyNotifications, markNotificationRead } from '@/services/notifications';
+import { getConversation } from '@/services/chat';
 
 interface HeaderProps extends Partial<RouteContext> {
   currentPage?: string;
@@ -125,7 +127,25 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           projectId: m.projectId,
           conversationId: m.conversationId,
         }));
-        const merged = [...mappedR, ...mappedP].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
+        // Chat notifications (unified backend notifications)
+        let mappedChat: any[] = [];
+        try {
+          const notif = await listMyNotifications();
+          if (notif.ok && (notif.data as any)?.success) {
+            const arr = ((notif.data as any).data || []) as any[];
+            mappedChat = arr
+              .filter((n:any)=> String(n.type||'') === 'chat.message')
+              .map((n:any)=> ({
+                type: 'chat.message',
+                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
+                message: n.message,
+                createdAt: n.createdAt,
+                conversationId: n?.data?.conversationId,
+                _id: n?._id,
+              }));
+          }
+        } catch {}
+        const merged = [...mappedR, ...mappedP, ...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
         setNotifications(merged);
         return;
       } else if (role === 'customer' || isCustomerRole) {
@@ -155,7 +175,25 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           projectId: m.projectId,
           conversationId: m.conversationId,
         }));
-        const merged = [...mappedR, ...mappedP].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
+        // Chat notifications for worker/technician or other roles
+        let mappedChat: any[] = [];
+        try {
+          const notif = await listMyNotifications();
+          if (notif.ok && (notif.data as any)?.success) {
+            const arr = ((notif.data as any).data || []) as any[];
+            mappedChat = arr
+              .filter((n:any)=> String(n.type||'') === 'chat.message')
+              .map((n:any)=> ({
+                type: 'chat.message',
+                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
+                message: n.message,
+                createdAt: n.createdAt,
+                conversationId: n?.data?.conversationId,
+                _id: n?._id,
+              }));
+          }
+        } catch {}
+        const merged = [...mappedR, ...mappedP, ...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
         setNotifications(merged);
         return;
       }
@@ -302,6 +340,38 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                               setNotifOpen(false);
                               // Clear the badge count once a notification item is opened
                               setVendorMsgCount(0);
+                              // Handle chat.message first using conversationId to open existing chat
+                              if (n.type === 'chat.message' && n.conversationId) {
+                                (async () => {
+                                  try {
+                                    const cid = String(n.conversationId);
+                                    try { if (n._id) await markNotificationRead(String(n._id)); } catch {}
+                                    try { localStorage.setItem('chat_conversation_id', cid); } catch {}
+                                    const c = await getConversation(cid);
+                                    if (c.ok && c.data) {
+                                      const roleLower = role;
+                                      if (roleLower === 'vendor') {
+                                        const techId = String((c.data as any).technicianId || '');
+                                        const sid = String((c.data as any).serviceRequestId || '');
+                                        try { if (techId) localStorage.setItem('chat_technician_id', techId); } catch {}
+                                        try { if (sid) localStorage.setItem('chat_service_id', sid); } catch {}
+                                        if (setCurrentPage) setCurrentPage('vendor-chat'); else {
+                                          const url = new URL(window.location.href); url.searchParams.set('page','vendor-chat'); window.location.href = url.toString();
+                                        }
+                                      } else {
+                                        // technician or others
+                                        const sid = String((c.data as any).serviceRequestId || '');
+                                        try { if (sid) localStorage.setItem('chat_service_id', sid); } catch {}
+                                        if (setCurrentPage) setCurrentPage('technician-chat'); else {
+                                          const url = new URL(window.location.href); url.searchParams.set('page','technician-chat'); window.location.href = url.toString();
+                                        }
+                                      }
+                                      return;
+                                    }
+                                  } catch {}
+                                })();
+                                return;
+                              }
                               if (role === 'vendor') {
                                 try {
                                   if (n.type === 'project' || n.projectId || n.conversationId) {

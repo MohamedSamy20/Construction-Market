@@ -16,7 +16,8 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
   const [items, setItems] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [savingId, setSavingId] = useState<string | number | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
   const [onlyOffers, setOnlyOffers] = useState<boolean>(false);
 
   const load = async () => {

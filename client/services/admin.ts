@@ -42,13 +42,12 @@ export async function adminCreateProduct(payload: any) {
 }
 
 export async function adminUpdateProduct(id: string | number, payload: any) {
-  const pid = encodeURIComponent(String(id));
-  return api.put(`/api/Admin/products/${pid}`, payload, { auth: true });
+  return api.put(`/api/Admin/products/${String(id)}`, payload, { auth: true });
 }
 
 export async function adminSetProductDiscount(id: string | number, discountPrice: number | null) {
-  const pid = encodeURIComponent(String(id));
-  return api.post(`/api/Admin/products/${pid}/discount`, { discountPrice }, { auth: true });
+  return api.post(`/api/Admin/products/${String(id)}/discount`, { discountPrice }, { auth: true });
+
 }
 
 export async function approveService(serviceId: string) {

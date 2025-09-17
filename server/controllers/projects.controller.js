@@ -36,7 +36,7 @@ export async function create(req, res) {
     description: body.description,
     customerId: req.user._id,
     categoryId: body.categoryId || null,
-    status: 'Published',
+    status: 'Draft',
     views: 0,
   });
   res.status(201).json(p);

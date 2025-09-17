@@ -171,6 +171,7 @@ export default function TechnicianServices({ setCurrentPage, ...context }: Props
                           url.searchParams.set('page', 'technician-service-details');
                           window.history.replaceState({}, '', url.toString());
                         } catch {}
+                        try { window.localStorage.setItem('selected_service_id', String(s.id)); } catch {}
                         safeSetCurrentPage('technician-service-details');
                       }}
                     >
@@ -311,7 +312,14 @@ export default function TechnicianServices({ setCurrentPage, ...context }: Props
                 (async () => {
                   try {
                     setSaving(true);
-                    const res = await createOffer({ targetType: 'service', serviceId: String(selectedService.id), price: priceNum, days: daysNum, message: offerMessage || '' });
+                    const sid = String(selectedService?.id ?? '');
+                    const isValidObjectId = /^[a-f0-9]{24}$/i.test(sid);
+                    if (!isValidObjectId) {
+                      setSaving(false);
+                      try { alert(locale==='ar' ? 'معرّف الخدمة غير صالح' : 'Invalid service id'); } catch {}
+                      return;
+                    }
+                    const res = await createOffer({ targetType: 'service', serviceId: sid, price: priceNum, days: daysNum, message: offerMessage || '' });
                     if (res.ok) {
                       // refresh my offers to update UI state
                       try {

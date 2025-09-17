@@ -15,7 +15,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
   const [technicianId, setTechnicianId] = useState<string>("");
   const [technicianName, setTechnicianName] = useState<string>("");
   const [serviceId, setServiceId] = useState<string>("");
-  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState<string>("");
   const [messages, setMessages] = useState<Array<{ id: number; from: string; text: string; ts: number }>>([]);
   const [text, setText] = useState<string>("");
@@ -26,19 +26,19 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     if (typeof window === 'undefined') return;
     const tid = window.localStorage.getItem('chat_technician_id') || '';
     const sid = window.localStorage.getItem('chat_service_id') || '';
-    const cid = Number(window.localStorage.getItem('chat_conversation_id') || '') || null;
+    const cid = window.localStorage.getItem('chat_conversation_id') || null;
     setTechnicianId(tid);
     setServiceId(sid);
-    if (cid) setConversationId(cid);
+    if (cid) setConversationId(String(cid));
     // Fallback: if no conversation id but we have keys and user is vendor, try resolve
     if (!cid && tid && sid) {
       (async () => {
         try {
-          const found = await getConversationByKeys(Number(sid), String(tid));
+          const found = await getConversationByKeys(String(sid), String(tid));
           if (found.ok && (found.data as any)?.id) {
-            const id = Number((found.data as any).id);
+            const id = String((found.data as any).id);
             setConversationId(id);
-            try { window.localStorage.setItem('chat_conversation_id', String(id)); } catch {}
+            try { window.localStorage.setItem('chat_conversation_id', id); } catch {}
           }
         } catch (e) {
           // ignore; will show empty state
@@ -53,7 +53,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     (async () => {
       try {
         if (!conversationId) return;
-        const c = await getConversation(conversationId);
+        const c = await getConversation(String(conversationId));
         if (c.ok && c.data) {
           setTechnicianId((c.data as any).technicianId || technicianId);
           setServiceId(String((c.data as any).serviceRequestId || serviceId));
@@ -70,7 +70,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     (async () => {
       try {
         if (!conversationId) return;
-        const r = await listMessages(conversationId);
+        const r = await listMessages(String(conversationId));
         if (r.ok && Array.isArray(r.data)) {
           const arr = (r.data as any[]).map(m => ({ id: m.id, from: m.from, text: m.text, ts: new Date(m.createdAt).getTime() }));
           setMessages(arr);
@@ -82,7 +82,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     if (conversationId) {
       timer = setInterval(async () => {
         try {
-          const r = await listMessages(conversationId);
+          const r = await listMessages(String(conversationId));
           if (r.ok && Array.isArray(r.data)) {
             const arr = (r.data as any[]).map(m => ({ id: m.id, from: m.from, text: m.text, ts: new Date(m.createdAt).getTime() }));
             setMessages(arr);
@@ -109,10 +109,10 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     if (!text.trim() || !conversationId) return;
     (async () => {
       try {
-        const r = await sendMessage(conversationId, text.trim());
+        const r = await sendMessage(String(conversationId), text.trim());
         if (r.ok) {
           // refresh messages immediately
-          const l = await listMessages(conversationId);
+          const l = await listMessages(String(conversationId));
           if (l.ok && Array.isArray(l.data)) {
             const arr = (l.data as any[]).map(m => ({ id: m.id, from: m.from, text: m.text, ts: new Date(m.createdAt).getTime() }));
             setMessages(arr);
