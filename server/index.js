@@ -76,10 +76,26 @@ const corsOptions = {
     try {
       // Allow requests with no origin (e.g., mobile apps, curl, Postman)
       if (!origin) return cb(null, true);
-      // Allow if origin is explicitly in the whitelist
-      if (allowedOrigins.includes(origin)) return cb(null, true);
-      // Additionally allow same-origin requests (when server and client share origin)
-      // or relaxed dev mode
+
+      // Helper: match explicit or wildcard patterns provided in ALLOWED_ORIGINS
+      const matchOrigin = (value, patterns) => {
+        for (const p of patterns) {
+          if (!p) continue;
+          if (p === value) return true;
+          if (p.includes('*')) {
+            // Convert simple wildcard to RegExp
+            const regex = new RegExp('^' + p
+              .replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&')
+              .replace(/\\\*/g, '.*') + '$');
+            if (regex.test(value)) return true;
+          }
+        }
+        return false;
+      };
+
+      if (matchOrigin(origin, allowedOrigins)) return cb(null, true);
+
+      // Additionally allow relaxed dev mode
       if (process.env.NODE_ENV !== 'production') return cb(null, true);
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     } catch (e) {
