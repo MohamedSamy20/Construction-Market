@@ -19,7 +19,7 @@ export default function ProductCategories({ setCurrentPage, setSearchFilters }: 
         const { ok, data } = await getRootCategories();
         if (ok && Array.isArray(data) && !cancelled) {
           const mapped = (data as any[]).map((c: any) => ({
-            id: c.id,
+            id: String(c.id ?? c._id),
             title: String(locale === 'ar' ? (c.nameAr || c.nameEn || '') : (c.nameEn || c.nameAr || '')),
             description: typeof c.descriptionAr !== 'undefined' || typeof c.descriptionEn !== 'undefined'
               ? String(locale === 'ar' ? (c.descriptionAr || '') : (c.descriptionEn || ''))
@@ -89,8 +89,8 @@ export default function ProductCategories({ setCurrentPage, setSearchFilters }: 
                   variant="outline"
                   className="w-full border-gray-300 text-gray-900 bg-white"
                   onClick={() => {
-                    // Navigate to products and search by category name via backend search
-                    setSearchFilters && setSearchFilters({ term: (category as any).title });
+                    // Navigate to products and filter by categoryId directly (backend filter)
+                    setSearchFilters && setSearchFilters({ term: '', categoryId: String((category as any).id) });
                     setCurrentPage && setCurrentPage("products");
                   }}
                 >

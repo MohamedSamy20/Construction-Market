@@ -11,15 +11,26 @@ export async function getCart(req, res) {
 }
 
 export async function addItem(req, res) {
-  const { id, quantity, price } = req.body || {};
+  const { id, quantity, price, name, brand, image } = req.body || {};
   let cart = await Cart.findOne({ userId: req.user._id });
   if (!cart) cart = await Cart.create({ userId: req.user._id, items: [] });
   const idx = cart.items.findIndex((x) => String(x.productId) === String(id));
   if (idx >= 0) {
     cart.items[idx].quantity = Number(cart.items[idx].quantity) + Number(quantity || 1);
     if (price != null) cart.items[idx].price = Number(price);
+    // Fill missing meta if provided
+    if (!cart.items[idx].name && name) cart.items[idx].name = String(name);
+    if (!cart.items[idx].brand && brand) cart.items[idx].brand = String(brand);
+    if (!cart.items[idx].image && image) cart.items[idx].image = String(image);
   } else {
-    cart.items.push({ productId: id, quantity: Number(quantity || 1), price: Number(price || 0) });
+    cart.items.push({
+      productId: id,
+      quantity: Number(quantity || 1),
+      price: Number(price || 0),
+      name: name ? String(name) : undefined,
+      brand: brand ? String(brand) : undefined,
+      image: image ? String(image) : undefined,
+    });
   }
   await cart.save();
   res.json(calc(cart));

@@ -24,23 +24,46 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const pid = Number(window.localStorage.getItem('project_chat_project_id') || '') || null;
-    const mid = String(window.localStorage.getItem('project_chat_merchant_id') || '');
+    // Read from localStorage
+    const pidLs = Number(window.localStorage.getItem('project_chat_project_id') || '') || null;
+    const midLs = String(window.localStorage.getItem('project_chat_merchant_id') || '');
     const midName = String(window.localStorage.getItem('project_chat_merchant_name') || '');
-    const cid = Number(window.localStorage.getItem('project_chat_conversation_id') || '') || null;
+    const cidLs = Number(window.localStorage.getItem('project_chat_conversation_id') || '') || null;
+    // Read from URL as fallback
+    let pidUrl: number | null = null;
+    let cidUrl: number | null = null;
+    try {
+      const url = new URL(window.location.href);
+      const qpPid = url.searchParams.get('projectId');
+      const qpCid = url.searchParams.get('conversationId');
+      if (qpPid) pidUrl = Number(qpPid) || null;
+      if (qpCid) cidUrl = Number(qpCid) || null;
+    } catch {}
+    const pid = pidLs ?? pidUrl;
+    const cid = cidLs ?? cidUrl;
     setProjectId(pid);
-    setMerchantId(mid);
+    setMerchantId(midLs);
     if (midName) setMerchantName(midName);
+    // Determine merchant id to use now (avoid stale state inside async)
+    let midUsed = midLs;
+    try {
+      const role = String((context as any)?.user?.role || '').toLowerCase();
+      const myId = String((context as any)?.user?.id || '');
+      if (!midUsed && role === 'vendor' && myId) {
+        midUsed = myId;
+        setMerchantId(myId);
+      }
+    } catch {}
     (async () => {
       try {
         if (cid) {
           setConversationId(cid);
           return;
         }
-        if (pid && mid) {
+        if (pid && midUsed) {
           // Try resolve existing
           try {
-            const found = await getProjectConversationByKeys(pid, mid);
+            const found = await getProjectConversationByKeys(pid, midUsed);
             if (found.ok && (found.data as any)?.id) {
               const id = Number((found.data as any).id);
               setConversationId(id);
@@ -50,7 +73,7 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
           } catch {}
           // Otherwise, create one
           try {
-            const created = await createProjectConversation(pid, mid);
+            const created = await createProjectConversation(pid, midUsed);
             if (created.ok && (created.data as any)?.id) {
               const id = Number((created.data as any).id);
               setConversationId(id);
@@ -61,6 +84,23 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
         }
       } catch {}
     })();
+    // Listen to storage changes (e.g., when opened via notification without full reload)
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key === 'project_chat_conversation_id' && e.newValue) {
+        const v = Number(e.newValue) || null;
+        if (v) setConversationId(v);
+      }
+      if (e.key === 'project_chat_project_id' && e.newValue) {
+        const v = Number(e.newValue) || null;
+        if (v) setProjectId(v);
+      }
+      if (e.key === 'project_chat_merchant_id' && e.newValue) {
+        setMerchantId(String(e.newValue));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => { window.removeEventListener('storage', onStorage); };
   }, []);
 
   useEffect(() => {
@@ -111,7 +151,11 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
   }, [messages]);
 
   const send = () => {
-    if (!text.trim() || !conversationId) return;
+    if (!conversationId) {
+      alert(isAr ? 'لا توجد محادثة محددة بعد. افتح الشات من الإشعار مرة أخرى أو من تفاصيل المشروع.' : 'No conversation selected yet. Open chat from the notification again or from project details.');
+      return;
+    }
+    if (!text.trim()) return;
     (async () => {
       try {
         const r = await sendProjectMessage(conversationId, text.trim());
@@ -144,8 +188,8 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
               <span>{isVendor ? (isAr ? 'مراسلة العميل' : 'Message Customer') : (isAr ? 'مراسلة التاجر' : 'Message Merchant')}</span>
               <div className="text-xs text-muted-foreground">
                 {isVendor
-                  ? (isAr ? `عميل: ${customerName || customerId} • مشروع: #${projectId ?? ''}` : `Customer: ${customerName || customerId} • Project: #${projectId ?? ''}`)
-                  : (isAr ? `تاجر: ${merchantName || merchantId} • مشروع: #${projectId ?? ''}` : `Merchant: ${merchantName || merchantId} • Project: #${projectId ?? ''}`)
+                  ? (isAr ? `العميل: ${customerName || (isAr ? 'غير معرّف' : 'Unknown')}` : `Customer: ${customerName || 'Unknown'}`)
+                  : (isAr ? `التاجر: ${merchantName || (isAr ? 'غير معرّف' : 'Unknown')}` : `Merchant: ${merchantName || 'Unknown'}`)
                 }
               </div>
             </CardTitle>
@@ -161,21 +205,40 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
                   {isAr ? 'ابدأ المحادثة بإرسال رسالة.' : 'Start the conversation by sending a message.'}
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {messages.map((m, i) => (
-                    <div key={m.id ?? i} className={`flex ${m.from === myId ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${m.from === myId ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
-                        <div>{m.text}</div>
-                        <div className="text-[10px] opacity-70 mt-1">{new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}</div>
+                <div className="space-y-3">
+                  {messages.map((m, i) => {
+                    const isMine = m.from === myId;
+                    const name = (() => {
+                      if (m.from === merchantId) return merchantName || (isAr ? 'التاجر' : 'Merchant');
+                      if (m.from === customerId) return customerName || (isAr ? 'العميل' : 'Customer');
+                      if (isMine) return isAr ? 'أنا' : 'Me';
+                      return isAr ? 'مستخدم' : 'User';
+                    })();
+                    return (
+                      <div key={m.id ?? i} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        <div className="max-w-[70%]">
+                          <div className={`rounded-lg px-3 py-2 text-sm ${isMine ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+                            <div>{m.text}</div>
+                            <div className={`text-[10px] opacity-70 mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
+                              {name} • {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
             <div className="flex gap-2 mt-3">
-              <Input value={text} onChange={(e)=> setText(e.target.value)} placeholder={isAr ? 'اكتب رسالة...' : 'Type a message...'} onKeyDown={(e)=> { if (e.key==='Enter') send(); }} />
-              <Button onClick={send} disabled={!text.trim()}>{isAr ? 'إرسال' : 'Send'}</Button>
+              <Input
+                value={text}
+                onChange={(e)=> setText(e.target.value)}
+                placeholder={conversationId ? (isAr ? 'اكتب رسالة...' : 'Type a message...') : (isAr ? 'لا توجد محادثة محددة' : 'No conversation selected')}
+                disabled={!conversationId}
+                onKeyDown={(e)=> { if (e.key==='Enter') send(); }}
+              />
+              <Button onClick={send} disabled={!text.trim() || !conversationId}>{isAr ? 'إرسال' : 'Send'}</Button>
             </div>
           </CardContent>
         </Card>

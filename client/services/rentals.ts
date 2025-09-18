@@ -55,9 +55,10 @@ export async function deleteRental(id: string | number) {
 }
 
 export type UpdateRentalInput = {
-  startDate: string;
-  endDate: string;
-  dailyRate: number;
+  // Dates are optional: technician will set them later
+  startDate?: string;
+  endDate?: string;
+  dailyRate?: number;
   securityDeposit?: number | null;
   currency?: string | null;
   specialInstructions?: string | null;
@@ -66,7 +67,7 @@ export type UpdateRentalInput = {
   customerId?: string | null;
 };
 
-export async function updateRental(id: string | number, input: UpdateRentalInput) {
+export async function updateRental(id: string | number, input: Partial<UpdateRentalInput>) {
   return api.put<void>(`/api/Rentals/${encodeURIComponent(String(id))}`, input, { auth: true });
 }
 

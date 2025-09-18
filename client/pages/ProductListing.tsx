@@ -43,26 +43,8 @@ import { confirmDialog } from "../utils/alerts";
 import { getProducts } from "@/services/products";
 import { addFavorite, removeFavorite, isFavorite } from "../lib/favorites";
 
-// Categories are loaded from backend (/api/Categories/all)
-// We keep them as simple strings used in the localized UI
-// If backend later supports localized names, we can extend this to {ar,en}
+// Categories come from backend
 const categoriesSeed: string[] = [];
-
-const brands = [
-  { ar: "تويوتا", en: "Toyota" },
-  { ar: "هوندا", en: "Honda" },
-  { ar: "نيسان", en: "Nissan" },
-  { ar: "فورد", en: "Ford" },
-  { ar: "شيفروليه", en: "Chevrolet" },
-  { ar: "ميشيلين", en: "Michelin" },
-  { ar: "بريجستون", en: "Bridgestone" },
-  { ar: "بوش", en: "Bosch" },
-  { ar: "AC Delco", en: "AC Delco" },
-  { ar: "موبيل", en: "Mobil" },
-  { ar: "كاسترول", en: "Castrol" },
-  { ar: "فيليبس", en: "Philips" },
-  { ar: "بريمبو", en: "Brembo" },
-];
 
 interface ProductListingProps {
   setCurrentPage: (page: string) => void;
@@ -84,22 +66,42 @@ export default function ProductListing({
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string>(rest?.searchFilters?.partCategory || '');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(rest?.searchFilters?.categoryId ? String(rest.searchFilters.categoryId) : 'all');
-  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-  const [priceRange, setPriceRange] = useState([0, 1000]);
+  // Removed brands filter
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000]);
+  const [priceBounds, setPriceBounds] = useState<[number, number]>([0, 1000]);
   const [sortBy, setSortBy] = useState("relevance");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showFilters, setShowFilters] = useState(false);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [openCategories, setOpenCategories] = useState(false);
-  const [openBrands, setOpenBrands] = useState(false);
   const [openPrice, setOpenPrice] = useState(false);
   const [openFlags, setOpenFlags] = useState(false);
-  const [showAllBrands, setShowAllBrands] = useState(false);
   // Force public listing to be read-only and sourced only from backend
   const isVendor = false;
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+
+  // Helper: collect all descendant category IDs for a given category id
+  const collectDescendantIds = (list: CategoryDto[], rootId: string): string[] => {
+    // Use parentCategoryId across the whole list to find all descendants
+    const result: string[] = [];
+    const stack: string[] = [String(rootId)];
+    const all = Array.isArray(list) ? list : [];
+    while (stack.length) {
+      const parent = String(stack.pop());
+      const children = all.filter((c:any) => String(c?.parentCategoryId || '') === parent);
+      for (const ch of children) {
+        const id = String((ch as any).id || '');
+        if (id && !result.includes(id)) {
+          result.push(id);
+          stack.push(id);
+        }
+      }
+    }
+    // Remove the root itself if it got included; we only want descendants
+    return result.filter(id => id !== String(rootId));
+  };
 
   // Load from backend only and map records to UI shape
   useEffect(() => {
@@ -120,23 +122,71 @@ export default function ProductListing({
           return searchTerm && (nmAr === searchTerm || nmEn === searchTerm);
         });
         const effectiveCategoryId = catMatch?.id
-          ?? (rest?.searchFilters?.categoryId ? Number(rest.searchFilters.categoryId) : undefined)
-          ?? (selectedCategoryId && selectedCategoryId !== 'all' ? Number(selectedCategoryId) : undefined);
+          ?? (rest?.searchFilters?.categoryId ? String(rest.searchFilters.categoryId) : undefined)
+          ?? (selectedCategoryId && selectedCategoryId !== 'all' ? String(selectedCategoryId) : undefined);
+        try { console.debug('[products] selectedCategoryId', selectedCategoryId, 'catMatch?', !!catMatch, 'effectiveCategoryId', effectiveCategoryId); } catch {}
         const params: any = {
           page: 1,
           pageSize: 100,
-          query: catMatch ? '' : searchTerm,
+          // If a category is selected, do not filter by text to avoid over-filtering
+          query: effectiveCategoryId ? '' : (catMatch ? '' : searchTerm),
           categoryId: effectiveCategoryId,
           ...sortMap[sortBy]
         };
-        const { ok, data, status } = await getProducts(params) as any;
-        try { console.debug('[products] request params', params, 'ok', ok, 'status', status); } catch {}
-        if (ok && data) {
-          let arr = Array.isArray((data as any).items)
-            ? (data as any).items
-            : Array.isArray((data as any).Items)
-              ? (data as any).Items
-              : (Array.isArray(data as any) ? (data as any) : []);
+        // If a category is selected and has descendants, fetch all and merge
+        let allItems: any[] = [];
+        if (effectiveCategoryId) {
+          const descendants = collectDescendantIds(categories as any, String(effectiveCategoryId));
+          const ids = [String(effectiveCategoryId), ...descendants];
+          if (ids.length > 1) {
+            const calls = ids.map((cid) => getProducts({ ...params, categoryId: cid, query: '' }) as any);
+            const results = await Promise.allSettled(calls);
+            results.forEach((r:any) => {
+              if (r.status === 'fulfilled' && r.value?.ok && r.value?.data) {
+                const d = r.value.data;
+                const arr = Array.isArray((d as any).items)
+                  ? (d as any).items
+                  : Array.isArray((d as any).Items)
+                    ? (d as any).Items
+                    : (Array.isArray(d as any) ? (d as any) : []);
+                allItems.push(...arr);
+              }
+            });
+            // Deduplicate by product id
+            const seen = new Set<string>();
+            allItems = allItems.filter((p:any)=> {
+              const id = String(p?.id ?? '');
+              if (!id || seen.has(id)) return false;
+              seen.add(id);
+              return true;
+            });
+          } else {
+            const { ok, data, status } = await getProducts(params) as any;
+            try { console.debug('[products] request params', params, 'ok', ok, 'status', status); } catch {}
+            if (ok && data) {
+              let arr = Array.isArray((data as any).items)
+                ? (data as any).items
+                : Array.isArray((data as any).Items)
+                  ? (data as any).Items
+                  : (Array.isArray(data as any) ? (data as any) : []);
+              allItems = arr;
+            }
+          }
+        } else {
+          const { ok, data, status } = await getProducts(params) as any;
+          try { console.debug('[products] request params', params, 'ok', ok, 'status', status); } catch {}
+          if (ok && data) {
+            let arr = Array.isArray((data as any).items)
+              ? (data as any).items
+              : Array.isArray((data as any).Items)
+                ? (data as any).Items
+                : (Array.isArray(data as any) ? (data as any) : []);
+            allItems = arr;
+          }
+        }
+
+        if (Array.isArray(allItems)) {
+          let arr = allItems;
           try { console.debug('[products] raw items count', Array.isArray(arr) ? arr.length : 0); } catch {}
           // keep only products that have at least one image url
           arr = arr.filter((p: any) => {
@@ -153,13 +203,25 @@ export default function ProductListing({
             const hasValidDiscount = typeof disc === 'number' && disc > 0 && disc < basePrice;
             const currentPrice = hasValidDiscount ? Number(disc) : basePrice;
             const originalPrice = basePrice;
+            // Safe id mapping
+            const rawId = (p as any).id ?? (p as any)._id ?? '';
+            const idStr = String(rawId).trim();
+            // Derive brand from attributes if available
+            const attrs = Array.isArray((p as any).attributes) ? (p as any).attributes : [];
+            const brandAttr = attrs.find((a:any) => {
+              const nEn = String(a?.nameEn || '').toLowerCase();
+              const nAr = String(a?.nameAr || '').toLowerCase();
+              return ['brand','make','manufacturer','company'].includes(nEn) || ['العلامة التجارية','الماركة','ماركة','الشركة','الصانع'].includes(nAr);
+            });
+            const brandAr = String(brandAttr?.valueAr || brandAttr?.valueEn || '').trim();
+            const brandEn = String(brandAttr?.valueEn || brandAttr?.valueAr || '').trim();
             return ({
-              id: String(p.id),
+              id: idStr,
               group: 'tools',
               name: { ar: p.nameAr || '', en: p.nameEn || '' },
-              brand: { ar: 'عام', en: 'Generic' },
+              brand: { ar: brandAr || 'عام', en: brandEn || 'Generic' },
               category: { ar: (p as any).categoryName || '', en: (p as any).categoryName || '' },
-              categoryId: Number((p as any).categoryId ?? 0),
+              categoryId: String((p as any).categoryId ?? ''),
               subCategory: { ar: '', en: '' },
               price: currentPrice,
               originalPrice: originalPrice,
@@ -175,9 +237,26 @@ export default function ProductListing({
               description: { ar: (p as any).descriptionAr || '', en: (p as any).descriptionEn || '' },
             })
           });
-          if (!cancelled) setProducts(backendList);
+          if (!cancelled) {
+            const cleaned = backendList.filter((p:any) => !!p.id && p.id !== 'undefined' && p.id !== 'null');
+            setProducts(cleaned);
+            // Dynamic price bounds
+            const prices = backendList.map((p:any) => Number(p.price || 0)).filter((n:number)=> !isNaN(n));
+            const minP = prices.length ? Math.max(0, Math.floor(Math.min(...prices))) : 0;
+            const maxP = prices.length ? Math.ceil(Math.max(...prices)) : 1000;
+            setPriceBounds([minP, maxP]);
+            // If current range is default or out of new bounds, reset to bounds
+            setPriceRange((prev) => {
+              const isDefault = prev[0] === 0 && prev[1] === 1000;
+              const outOfBounds = prev[0] < minP || prev[1] > maxP || prev[0] > prev[1];
+              return (isDefault || outOfBounds) ? [minP, maxP] : [
+                Math.max(minP, prev[0]),
+                Math.min(maxP, prev[1])
+              ];
+            });
+          }
           if (Array.isArray(arr) && arr.length === 0) {
-            try { console.warn('[products] Empty after filtering. Raw data sample:', data); } catch {}
+            try { console.warn('[products] Empty after filtering.'); } catch {}
           }
         } else if (!cancelled) {
           setProducts([]);
@@ -196,8 +275,26 @@ export default function ProductListing({
     (async () => {
       try {
         const { ok, data } = await getAllCategories();
-        if (ok && Array.isArray(data)) {
-          if (!cancelled) setCategories(data as any);
+        if (ok && data) {
+          let arr: any[] = [];
+          if (Array.isArray(data)) arr = data as any[];
+          else if (Array.isArray((data as any).items)) arr = (data as any).items;
+          else if (Array.isArray((data as any).Items)) arr = (data as any).Items;
+          // Normalize shape: ensure id and names exist
+          const normalized = arr
+            .map((c:any) => ({
+              id: String((c?.id ?? c?._id ?? '')).trim(),
+              nameAr: c?.nameAr ?? c?.arabicName ?? c?.name ?? '',
+              nameEn: c?.nameEn ?? c?.englishName ?? c?.name ?? '',
+              parentCategoryId: c?.parentCategoryId ? String(c.parentCategoryId) : undefined,
+              subCategories: Array.isArray(c?.subCategories) ? c.subCategories : [],
+              isActive: c?.isActive !== false,
+            }))
+            .filter((c:any) => !!c.id);
+          try { console.debug('[categories] loaded', normalized.length); } catch {}
+          if (!cancelled) setCategories(normalized as any);
+        } else if (!cancelled) {
+          setCategories([] as any);
         }
       } catch {
         // keep empty if failed
@@ -221,8 +318,9 @@ export default function ProductListing({
   useEffect(() => {
     let filtered = products;
 
-    // Search filter (case-insensitive)
-    if (searchTerm) {
+    // Search filter (case-insensitive). If a category is selected, skip client-side text filtering
+    const categorySelected = selectedCategoryId && selectedCategoryId !== 'all';
+    if (searchTerm && !categorySelected) {
       const q = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (product) =>
@@ -232,23 +330,9 @@ export default function ProductListing({
       );
     }
 
-    // Group filter from homepage (client-side until backend category mapping available)
-    if (selectedGroup) {
-      filtered = filtered.filter((product) => product.group === selectedGroup);
-    }
+    // Removed client-side group and category filters; rely on backend CategoryId filtering
 
-    // Category filter by backend categoryId
-    if (!selectedGroup && selectedCategoryId && selectedCategoryId !== 'all') {
-      const cid = Number(selectedCategoryId);
-      filtered = filtered.filter((product: any) => Number((product as any).categoryId) === cid);
-    }
-
-    // Brand filter
-    if (selectedBrands.length > 0) {
-      filtered = filtered.filter((product) =>
-        selectedBrands.includes(product.brand[locale])
-      );
-    }
+    // Removed brand filter
 
     // Price filter
     filtered = filtered.filter(
@@ -290,7 +374,6 @@ export default function ProductListing({
     searchTerm,
     selectedGroup,
     selectedCategoryId,
-    selectedBrands,
     priceRange,
     sortBy,
     inStockOnly,
@@ -304,13 +387,6 @@ export default function ProductListing({
     setCurrentPage("product-details");
   };
 
-  const handleBrandChange = (brand: string, checked: boolean) => {
-    if (checked) {
-      setSelectedBrands([...selectedBrands, brand]);
-    } else {
-      setSelectedBrands(selectedBrands.filter((b) => b !== brand));
-    }
-  };
 
   const isWishlisted = (id: string) => {
     const isLoggedIn = !!(rest as any)?.user;
@@ -624,14 +700,14 @@ export default function ProductListing({
           </div>
 
           <div className="flex gap-2">
-            <Select value={selectedCategoryId} onValueChange={(v)=> setSelectedCategoryId(v)}>
+            <Select value={selectedCategoryId} onValueChange={(v)=> { setSelectedCategoryId(v); if (v !== 'all') setSelectedGroup(''); setSearchTerm(''); }}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder={locale === 'en' ? 'Category' : 'الفئة'} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{locale === 'en' ? 'All Categories' : 'جميع الفئات'}</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={String((c as any).id)} value={String((c as any).id)}>
+                {categories.filter((c:any)=> !!c?.id).map((c, idx) => (
+                  <SelectItem key={`cat-${String((c as any).id)}`} value={String((c as any).id)}>
                     {String((c as any).nameAr || (c as any).nameEn || '')}
                   </SelectItem>
                 ))}
@@ -797,63 +873,22 @@ export default function ProductListing({
                     </button>
                   </div>
                   {openCategories && (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
                     <div
                       className={`cursor-pointer p-1.5 rounded-md text-sm ${selectedCategoryId === 'all' ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
                       onClick={() => setSelectedCategoryId('all')}
                     >
                       {t("allCategories")}
                     </div>
-                    {categories.map((c:any) => (
+                    {categories.filter((c:any)=> !!c?.id).map((c:any, idx:number) => (
                       <div
-                        key={String(c?.id)}
+                        key={`side-cat-${String(c?.id)}`}
                         className={`cursor-pointer p-1.5 rounded-md text-sm ${String(selectedCategoryId) === String(c?.id) ? "bg-primary/10 text-primary" : "hover:bg-muted"}`}
-                        onClick={() => setSelectedCategoryId(String(c?.id))}
+                        onClick={() => { setSelectedCategoryId(String(c?.id)); setSelectedGroup(''); setSearchTerm(''); }}
                       >
                         {String(c?.nameAr || c?.nameEn || '')}
                       </div>
                     ))}
-                  </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-muted-foreground">{t("brands")}</h3>
-                    <button
-                      type="button"
-                      onClick={() => setOpenBrands(!openBrands)}
-                      className="p-1 rounded hover:bg-muted"
-                      aria-label="toggle-brands"
-                    >
-                      <ChevronDown className={`h-4 w-4 transition-transform ${openBrands ? "rotate-180" : ""}`} />
-                    </button>
-                  </div>
-                  {openBrands && (
-                  <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                    {(showAllBrands ? brands : brands.slice(0, 6)).map((brand) => (
-                      <div key={brand.ar} className="flex items-center space-x-2 space-x-reverse">
-                        <Checkbox
-                          id={brand.ar}
-                          checked={selectedBrands.includes(brand.ar)}
-                          onCheckedChange={(checked) => handleBrandChange(brand.ar, checked as boolean)}
-                        />
-                        <label htmlFor={brand.ar} className="text-sm cursor-pointer">
-                          {brand[locale]}
-                        </label>
-                      </div>
-                    ))}
-                    {brands.length > 6 && (
-                      <button
-                        type="button"
-                        className="mt-1 text-xs text-primary hover:underline"
-                        onClick={() => setShowAllBrands(!showAllBrands)}
-                      >
-                        {showAllBrands ? t("showLess") : t("showMore")}
-                      </button>
-                    )}
                   </div>
                   )}
                 </div>
@@ -874,7 +909,14 @@ export default function ProductListing({
                   </div>
                   {openPrice && (
                   <div className="space-y-3">
-                    <Slider value={priceRange} onValueChange={setPriceRange} max={1000} step={10} className="w-full" />
+                    <Slider
+                      value={priceRange as unknown as number[]}
+                      onValueChange={(v: number[]) => setPriceRange([v[0] ?? priceBounds[0], v[1] ?? priceBounds[1]] as [number, number])}
+                      min={priceBounds[0]}
+                      max={priceBounds[1]}
+                      step={10}
+                      className="w-full"
+                    />
                     <div className="flex justify-between text-sm">
                       <span>{priceRange[0]} {currency}</span>
                       <span>{priceRange[1]} {currency}</span>
@@ -940,11 +982,11 @@ export default function ProductListing({
                     : "space-y-4"
                 }
               >
-                {filteredProducts.map((product) =>
+                {filteredProducts.map((product, idx) =>
                   viewMode === "grid" ? (
-                    <ProductCard key={product.id} product={product} />
+                    <ProductCard key={product.id || `prod-${idx}`} product={product} />
                   ) : (
-                    <ProductListItem key={product.id} product={product} />
+                    <ProductListItem key={product.id || `prod-${idx}`} product={product} />
                   )
                 )}
               </div>

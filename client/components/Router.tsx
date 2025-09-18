@@ -9,6 +9,7 @@ import { getProfile } from "@/services/auth";
 import { toastInfo } from "../utils/alerts";
 import { getWishlist as apiGetWishlist, addToWishlist as apiAddToWishlist, removeFromWishlist as apiRemoveFromWishlist } from "@/services/wishlist";
 import { getProductById } from "@/services/products";
+import LoadingOverlay from "./LoadingOverlay";
 
 export type UserRole = "customer" | "vendor" | "worker" | "admin";
 
@@ -76,6 +77,9 @@ export interface RouteContext {
   addToWishlist: (item: WishlistItem) => void;
   removeFromWishlist: (id: string) => void;
   isInWishlist: (id: string) => boolean;
+  // Global loading overlay
+  showLoading: (message?: string, subMessage?: string) => void;
+  hideLoading: () => void;
 }
 
 export interface SearchFilters {
@@ -83,7 +87,7 @@ export interface SearchFilters {
   carType?: string;
   model?: string;
   partCategory?: string; // engine | tires | electrical | tools
-  categoryId?: number; // backend category filter
+  categoryId?: string; // backend category filter (Mongo ObjectId)
 }
 
 export default function Router() {
@@ -114,88 +118,137 @@ export default function Router() {
   const [verificationRecheckedAt, setVerificationRecheckedAt] = useState<number>(0);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  // Helper: normalize base product id from any value or composite id. Returns '' if invalid.
+  const normalizeBaseId = (val: any): string => {
+    try {
+      const raw = String(val ?? '').trim();
+      const base = raw.split('|')[0];
+      if (!base || base === 'undefined' || base === 'null') return '';
+      return base;
+    } catch { return ''; }
+  };
+  // Helper: reconcile server cart items back to client composite IDs without duplicating keys
+  const pickNonEmpty = (...vals: Array<any>) => {
+    for (const v of vals) {
+      if (v === null || v === undefined) continue;
+      const s = typeof v === 'string' ? v.trim() : v;
+      if (typeof s === 'string') {
+        if (s.length) return s;
+      } else if (s) {
+        return s;
+      }
+    }
+    return vals[0];
+  };
+  const reconcileCartFromServer = (serverItems: any[], prev: CartItem[], fallback: CartItem | null = null): CartItem[] => {
+    // Build a queue per base id from previous items so each server item gets a unique composite id
+    const queues = new Map<string, CartItem[]>();
+    for (const p of prev) {
+      const b = normalizeBaseId(p.id);
+      if (!b) continue;
+      const arr = queues.get(b) || [];
+      arr.push(p);
+      queues.set(b, arr);
+    }
+    const result: CartItem[] = [];
+    for (const it of serverItems) {
+      // Prefer productId from server, fallback to id if present
+      const rawId = (it as any)?.productId ?? (it as any)?.id;
+      const base = normalizeBaseId(rawId);
+      const q = base ? queues.get(base) : undefined;
+      const prevItem = q && q.length ? q.shift()! : (fallback || null);
+      const compositeId = prevItem ? String(prevItem.id) : base || String((it as any)?.id || '');
+      result.push({
+        id: compositeId,
+        name: pickNonEmpty((it as any)?.name, prevItem?.name, fallback?.name),
+        price: Number(pickNonEmpty((it as any)?.price, prevItem?.price, fallback?.price, 0)),
+        brand: pickNonEmpty((it as any)?.brand, prevItem?.brand, fallback?.brand),
+        image: pickNonEmpty((it as any)?.image, prevItem?.image, fallback?.image),
+        quantity: Number(pickNonEmpty((it as any)?.quantity, prevItem?.quantity, fallback?.quantity, 1)),
+      } as CartItem);
+    }
+    return result;
+  };
   
   // Initialize wishlist state
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
+  // Global loading overlay state
+  const [loadingOpen, setLoadingOpen] = useState(false);
+  const [loadingMsg, setLoadingMsg] = useState<string | undefined>(undefined);
+  const [loadingSub, setLoadingSub] = useState<string | undefined>(undefined);
+  const showLoading = (message?: string, subMessage?: string) => { setLoadingMsg(message); setLoadingSub(subMessage); setLoadingOpen(true); };
+  const hideLoading = () => { setLoadingOpen(false); setLoadingMsg(undefined); setLoadingSub(undefined); };
 
-  const addToCart = (item: CartItem) => {
-    // Optimistic update
+  const addToCart = (item: CartItem & { [key: string]: any }) => {
+    // Build a composite client-side ID so different variants (e.g., installation) or rentals don't merge
+    const baseId = String(item.id);
+    const hasInstall = !!(item as any)?.addonInstallation?.enabled;
+    const rentalId = (item as any)?.rental?.id ? String((item as any).rental.id) : '';
+    // Variant signature to differentiate items that (incorrectly) share same backend id but differ by name/price/partNumber
+    const varSigName = String((item as any)?.name || '');
+    const varSigPart = String((item as any)?.partNumber || '');
+    const varSigPrice = String((item as any)?.price ?? '');
+    const varSigImg = String((item as any)?.image || '');
+    const varSigBrand = String((item as any)?.brand || '');
+    const variantSig = `${varSigName}|${varSigPart}|${varSigPrice}|${varSigBrand}|${varSigImg}`;
+    const normalizedId = `${baseId}${hasInstall ? '|inst' : ''}${rentalId ? `|r:${rentalId}` : ''}|v:${variantSig}`;
+    const normalized: CartItem & { [key: string]: any } = { ...item, id: normalizedId };
+    // Optimistic update with normalized comparison
     setCartItems((prev) => {
-      const idx = prev.findIndex((p) => p.id === item.id);
+      const idx = prev.findIndex((p) => String(p.id) === normalizedId);
       if (idx !== -1) {
         const copy = [...prev];
-        const maxQ = item.maxQuantity ?? 99;
-        copy[idx] = { ...copy[idx], quantity: Math.min(maxQ, copy[idx].quantity + item.quantity) };
+        const maxQ = normalized.maxQuantity ?? copy[idx].maxQuantity ?? 99;
+        copy[idx] = { ...copy[idx], quantity: Math.min(maxQ, (copy[idx].quantity || 0) + (normalized.quantity || 0)) };
         return copy;
       }
-      return [...prev, item];
+      return [...prev, normalized];
     });
     // Sync with backend (guest or logged-in)
     (async () => {
       try {
-        const r = await apiAddItem({ id: item.id, quantity: item.quantity, price: item.price });
+        // Extract base product ID to send to API (before any composite suffix)
+        const baseForApiStr = normalizeBaseId(normalizedId);
+        if (!baseForApiStr) return; // avoid hitting /undefined
+        const idForApi: any = isNaN(Number(baseForApiStr)) ? baseForApiStr : Number(baseForApiStr);
+        const r = await apiAddItem({ id: idForApi, quantity: normalized.quantity, price: normalized.price });
         const itemsResp = r && r.data && Array.isArray((r.data as any).items) ? (r.data as any).items : null;
         if (itemsResp) {
-          setCartItems((prev)=> itemsResp.map((it:any) => {
-            const id = String(it.id);
-            const prevItem = prev.find(p => p.id === id);
-            return {
-              id,
-              name: it.name ?? prevItem?.name ?? item.name,
-              price: Number(it.price ?? prevItem?.price ?? item.price ?? 0),
-              brand: it.brand ?? prevItem?.brand,
-              image: it.image || prevItem?.image || item.image,
-              quantity: Number(it.quantity ?? prevItem?.quantity ?? item.quantity ?? 1),
-            } as CartItem;
-          }));
+          setCartItems((prev)=> reconcileCartFromServer(itemsResp, prev, normalized));
         }
       } catch {}
     })();
   };
 
   const updateCartQty = (id: string, qty: number) => {
-    setCartItems((prev) => prev.map((p) => (p.id === id ? { ...p, quantity: Math.max(1, qty) } : p)));
+    const normId = String(id);
+    setCartItems((prev) => prev.map((p) => (String(p.id) === normId ? { ...p, quantity: Math.max(1, qty) } : p)));
     (async () => {
       try {
-        const r = await apiUpdateItemQuantity(id, Math.max(1, qty));
+        const baseForApiStr = normalizeBaseId(normId);
+        if (!baseForApiStr) return;
+        const idForApi: any = isNaN(Number(baseForApiStr)) ? baseForApiStr : Number(baseForApiStr);
+        const r = await apiUpdateItemQuantity(idForApi, Math.max(1, qty));
         const itemsResp = r && r.data && Array.isArray((r.data as any).items) ? (r.data as any).items : null;
         if (itemsResp) {
-          setCartItems((prev)=> itemsResp.map((it:any) => {
-            const pid = String(it.id);
-            const prevItem = prev.find(p => p.id === pid);
-            return {
-              id: pid,
-              name: it.name ?? prevItem?.name,
-              price: Number(it.price ?? prevItem?.price ?? 0),
-              brand: it.brand ?? prevItem?.brand,
-              image: it.image || prevItem?.image,
-              quantity: Number(it.quantity ?? prevItem?.quantity ?? 1),
-            } as CartItem;
-          }));
+          setCartItems((prev)=> reconcileCartFromServer(itemsResp, prev));
         }
       } catch {}
     })();
   };
 
   const removeFromCart = (id: string) => {
-    setCartItems((prev) => prev.filter((p) => p.id !== id));
+    const normId = String(id);
+    setCartItems((prev) => prev.filter((p) => String(p.id) !== normId));
     (async () => {
       try {
-        const r = await apiRemoveItem(id);
+        const baseForApiStr = normalizeBaseId(normId);
+        if (!baseForApiStr) return;
+        const idForApi: any = isNaN(Number(baseForApiStr)) ? baseForApiStr : Number(baseForApiStr);
+        const r = await apiRemoveItem(idForApi);
         const itemsResp = r && r.data && Array.isArray((r.data as any).items) ? (r.data as any).items : null;
         if (itemsResp) {
-          setCartItems((prev)=> itemsResp.map((it:any) => {
-            const pid = String(it.id);
-            const prevItem = prev.find(p => p.id === pid);
-            return {
-              id: pid,
-              name: it.name ?? prevItem?.name,
-              price: Number(it.price ?? prevItem?.price ?? 0),
-              brand: it.brand ?? prevItem?.brand,
-              image: it.image || prevItem?.image,
-              quantity: Number(it.quantity ?? prevItem?.quantity ?? 1),
-            } as CartItem;
-          }));
+          setCartItems((prev)=> reconcileCartFromServer(itemsResp, prev));
         }
       } catch {}
     })();
@@ -212,19 +265,22 @@ export default function Router() {
       try {
         const r = await apiGetCart();
         if (r.ok && r.data && Array.isArray(r.data.items)) {
-          const baseItems = r.data.items.map((it:any) => ({
-            id: String(it.id),
+          const baseItems = r.data.items
+            .map((it:any) => ({
+            // Use productId returned by server; fallback to id for compatibility
+            id: normalizeBaseId(it.productId ?? it.id) || String((it.productId ?? it.id) || ''),
             name: it.name,
             price: Number(it.price||0),
             brand: it.brand,
             image: it.image,
             quantity: Number(it.quantity||1)
-          })) as CartItem[];
+          }))
+          .filter((ci:any)=> !!ci.id && ci.id !== 'undefined' && ci.id !== 'null') as CartItem[];
           // Enrich items missing image/name from product service
           const enriched = await Promise.all(baseItems.map(async (ci) => {
             if (ci.image && ci.name) return ci;
             try {
-              const p = await getProductById(Number(ci.id));
+              const p = await getProductById(ci.id);
               if (p.ok && p.data) {
                 const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
                 const image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
@@ -235,7 +291,20 @@ export default function Router() {
             } catch {}
             return ci;
           }));
-          setCartItems(enriched);
+          // Generate composite IDs to avoid merging when backend returns same base id for different lines
+          const withCompositeIds = (() => {
+            const counts = new Map<string, number>();
+            return enriched.map((it) => {
+              const base = normalizeBaseId(it.id);
+              const varSig = `${String((it as any).name || '')}|${String((it as any).partNumber || '')}|${String((it as any).price ?? '')}`;
+              const compositeBase = `${base}|v:${varSig}`;
+              const n = (counts.get(compositeBase) || 0) + 1;
+              counts.set(compositeBase, n);
+              const uniqueId = `${compositeBase}|n:${n}`;
+              return { ...it, id: uniqueId } as CartItem;
+            });
+          })();
+          setCartItems(withCompositeIds);
         }
       } catch {}
     })();
@@ -387,6 +456,8 @@ export default function Router() {
     addToWishlist,
     removeFromWishlist,
     isInWishlist,
+    showLoading,
+    hideLoading,
   };
 
   const currentRoute = routes[currentPage as keyof typeof routes];
@@ -568,6 +639,7 @@ export default function Router() {
   return (
     <div className="min-h-screen bg-background" dir={dir} suppressHydrationWarning>
       <CurrentPageComponent {...context} />
+      <LoadingOverlay open={loadingOpen} message={loadingMsg} subMessage={loadingSub} />
     </div>
   );
 }

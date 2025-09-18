@@ -7,6 +7,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import type { RouteContext } from '../../components/Router';
 import { getAllCategories, type CategoryDto, createCategory, updateCategory, deleteCategory } from '../../services/products';
 import { api } from '../../lib/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 
 export default function AdminProductOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
@@ -27,6 +28,18 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
   const [dbCategories, setDbCategories] = useState<CategoryDto[] | null>(null);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  // Edit dialog state
+  const [editing, setEditing] = useState<null | CategoryDto>(null);
+  const [editNameAr, setEditNameAr] = useState('');
+  const [editNameEn, setEditNameEn] = useState('');
+  const [editDescAr, setEditDescAr] = useState('');
+  const [editDescEn, setEditDescEn] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editParentId, setEditParentId] = useState<string | ''>('');
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editSortOrder, setEditSortOrder] = useState<number | ''>('');
+  const editImageInputRef = useRef<HTMLInputElement | null>(null);
+  const [editUploading, setEditUploading] = useState(false);
 
   useEffect(() => {
     // Load categories from DB
@@ -38,7 +51,11 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
         const { ok, data } = await getAllCategories();
         if (!mounted) return;
         if (ok && Array.isArray(data)) {
-          setDbCategories(data as any);
+          const mapped = (data as any[]).map((c) => ({
+            ...c,
+            id: String((c as any).id ?? (c as any)._id),
+          }));
+          setDbCategories(mapped as any);
         } else {
           setDbCategories([]);
           setDbError(locale==='ar' ? 'تعذر جلب الفئات من الخادم' : 'Failed to fetch categories from server');
@@ -104,7 +121,13 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     try {
       setDbLoading(true);
       const { ok, data } = await getAllCategories();
-      if (ok && Array.isArray(data)) setDbCategories(data as any);
+      if (ok && Array.isArray(data)) {
+        const mapped = (data as any[]).map((c) => ({
+          ...c,
+          id: String((c as any).id ?? (c as any)._id),
+        }));
+        setDbCategories(mapped as any);
+      }
     } finally {
       setDbLoading(false);
     }
@@ -147,36 +170,59 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
     else alert(locale==='ar' ? 'فشل حذف الفئة' : 'Failed to delete category');
   };
 
-  const editCategory = async (cat: CategoryDto) => {
-    const inputAr = window.prompt(locale==='ar' ? 'تعديل الاسم (عربي)' : 'Edit Arabic name', cat.nameAr || '');
-    if (inputAr == null) return;
-    const inputEn = window.prompt(locale==='ar' ? 'تعديل الاسم (إنجليزي)' : 'Edit English name', cat.nameEn || '');
-    if (inputEn == null) return;
-    const inputDescAr = window.prompt(locale==='ar' ? 'تعديل الوصف (عربي)' : 'Edit Arabic description', cat.descriptionAr || '');
-    if (inputDescAr == null) return;
-    const inputDescEn = window.prompt(locale==='ar' ? 'تعديل الوصف (إنجليزي)' : 'Edit English description', cat.descriptionEn || '');
-    if (inputDescEn == null) return;
-    const inputImageUrl = window.prompt(locale==='ar' ? 'رابط الصورة (اختياري)' : 'Image URL (optional)', cat.imageUrl || '');
-    if (inputImageUrl == null) return;
-    const inputIsActive = window.prompt(locale==='ar' ? 'حالة التفعيل (true/false)' : 'Is Active (true/false)', String(!!cat.isActive));
-    if (inputIsActive == null) return;
-    const inputSort = window.prompt(locale==='ar' ? 'ترتيب العرض (رقم)' : 'Sort order (number)', String(cat.sortOrder ?? ''));
-    if (inputSort == null) return;
-    const newAr = inputAr.trim();
-    const newEn = inputEn.trim();
-    if (!newAr || !newEn) return;
+  // Open edit dialog prefilled
+  const openEdit = (cat: CategoryDto) => {
+    setEditing(cat);
+    setEditNameAr(cat.nameAr || '');
+    setEditNameEn(cat.nameEn || '');
+    setEditDescAr(cat.descriptionAr || '');
+    setEditDescEn(cat.descriptionEn || '');
+    setEditImageUrl(cat.imageUrl || '');
+    setEditParentId((cat as any).parentCategoryId ? String((cat as any).parentCategoryId) : '');
+    setEditIsActive(Boolean(cat.isActive));
+    setEditSortOrder(typeof cat.sortOrder === 'number' ? cat.sortOrder : '');
+  };
+
+  const handlePickEditImage = () => { editImageInputRef.current?.click(); };
+  const handleEditImageSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setEditUploading(true);
+      const { ok, data } = await api.uploadFile(file, 'images');
+      if (ok && data?.success) {
+        setEditImageUrl(data.url);
+      } else {
+        alert(locale==='ar' ? 'فشل رفع الصورة' : 'Image upload failed');
+      }
+    } finally {
+      setEditUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const ar = editNameAr.trim();
+    const en = editNameEn.trim();
+    if (!ar || !en) return;
     const payload: any = {
-      nameAr: newAr,
-      nameEn: newEn,
-      descriptionAr: inputDescAr.trim() || null,
-      descriptionEn: inputDescEn.trim() || null,
-      imageUrl: inputImageUrl.trim() || null,
-      isActive: /^true$/i.test(inputIsActive.trim()),
-      sortOrder: inputSort.trim() === '' ? undefined : Number(inputSort.trim())
+      nameAr: ar,
+      nameEn: en,
+      descriptionAr: editDescAr.trim() || null,
+      descriptionEn: editDescEn.trim() || null,
+      imageUrl: editImageUrl.trim() || null,
+      parentCategoryId: editParentId === '' ? undefined : String(editParentId),
+      isActive: !!editIsActive,
+      sortOrder: editSortOrder === '' ? undefined : Number(editSortOrder),
     };
-    const { ok } = await updateCategory(cat.id, payload);
-    if (ok) await reload();
-    else alert(locale==='ar' ? 'فشل تعديل الفئة' : 'Failed to update category');
+    const { ok } = await updateCategory(String(editing.id), payload);
+    if (ok) {
+      setEditing(null);
+      await reload();
+    } else {
+      alert(locale==='ar' ? 'فشل تعديل الفئة' : 'Failed to update category');
+    }
   };
 
   return (
@@ -281,7 +327,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => void editCategory(c)}>
+                      <Button variant="outline" size="sm" onClick={() => openEdit(c)}>
                         {locale==='ar' ? 'تعديل' : 'Edit'}
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => triggerItemImageUpload(String(c.id))} disabled={String(itemImageUploadingId || '') === String(c.id)}>
@@ -298,6 +344,54 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Category Dialog */}
+        <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
+          {editing && (
+            <DialogContent className="max-w-2xl bg-white dark:bg-zinc-900">
+              <DialogHeader>
+                <DialogTitle>{locale==='ar' ? 'تعديل الفئة' : 'Edit Category'}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input placeholder={locale==='ar' ? 'الاسم بالعربي' : 'Name (Arabic)'} value={editNameAr} onChange={(e)=> setEditNameAr(e.target.value)} />
+                  <Input placeholder={locale==='ar' ? 'الاسم بالإنجليزي' : 'Name (English)'} value={editNameEn} onChange={(e)=> setEditNameEn(e.target.value)} />
+                  <Input placeholder={locale==='ar' ? 'الوصف بالعربي (اختياري)' : 'Description (Arabic) optional'} value={editDescAr} onChange={(e)=> setEditDescAr(e.target.value)} />
+                  <Input placeholder={locale==='ar' ? 'الوصف بالإنجليزي (اختياري)' : 'Description (English) optional'} value={editDescEn} onChange={(e)=> setEditDescEn(e.target.value)} />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button type="button" variant="outline" onClick={handlePickEditImage} disabled={editUploading}>
+                    {editUploading ? (locale==='ar' ? '...جاري الرفع' : 'Uploading...') : (locale==='ar' ? 'اختيار صورة' : 'Choose Image')}
+                  </Button>
+                  {editImageUrl && (<img src={editImageUrl} alt="cat" className="h-12 w-12 object-cover rounded border" />)}
+                  <Input value={editImageUrl} onChange={(e)=> setEditImageUrl(e.target.value)} placeholder={locale==='ar' ? 'أو ألصق رابط الصورة' : 'Or paste image URL'} />
+                  <input ref={editImageInputRef} type="file" accept="image/*" hidden onChange={handleEditImageSelected} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                  <select
+                    className="border rounded-md h-10 px-2"
+                    value={editParentId}
+                    onChange={(e)=> setEditParentId(e.target.value === '' ? '' : String(e.target.value))}
+                  >
+                    <option value="">{locale==='ar' ? 'بدون فئة أب' : 'No parent category'}</option>
+                    {(dbCategories || []).filter(c => String(c.id) !== String(editing.id)).map(c => (
+                      <option key={String(c.id)} value={String(c.id)}>{locale==='ar' ? (c.nameAr || c.nameEn) : (c.nameEn || c.nameAr)}</option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={editIsActive} onChange={(e)=> setEditIsActive(e.target.checked)} />
+                    {locale==='ar' ? 'مفعّل' : 'Active'}
+                  </label>
+                  <Input type="number" placeholder={locale==='ar' ? 'ترتيب العرض (اختياري)' : 'Sort order (optional)'} value={editSortOrder} onChange={(e)=> setEditSortOrder(e.target.value === '' ? '' : Number(e.target.value))} />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={()=> setEditing(null)}>{locale==='ar' ? 'إلغاء' : 'Cancel'}</Button>
+                  <Button onClick={()=> void saveEdit()}>{locale==='ar' ? 'حفظ' : 'Save'}</Button>
+                </div>
+              </div>
+            </DialogContent>
+          )}
+        </Dialog>
       </div>
     </div>
   );
