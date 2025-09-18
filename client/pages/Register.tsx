@@ -16,7 +16,7 @@ import { toastInfo } from '../utils/alerts';
 
 interface RegisterProps extends RouteContext {}
 
-export default function Register({ setCurrentPage, setUser, returnTo, setReturnTo, user, cartItems }: RegisterProps) {
+export default function Register({ setCurrentPage, setUser, returnTo, setReturnTo, user, cartItems, showLoading, hideLoading }: RegisterProps) {
   const { t, locale } = useTranslation();
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
@@ -137,6 +137,7 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
     }
     setError(null);
 
+    showLoading?.(isAr ? 'جاري إنشاء الحساب...' : 'Creating your account...', isAr ? 'يرجى الانتظار قليلاً' : 'Please wait a moment');
     const { ok, data, error, status } = await apiRegister(base) as any;
     if (!ok || !data) {
       const friendlyRegisterMessage = (status?: number, payload?: any) => {
@@ -177,6 +178,7 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
 
       const msg = friendlyRegisterMessage(status, data);
       setError(msg);
+      hideLoading?.();
       return;
     }
 
@@ -199,6 +201,7 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
       );
       setReturnTo(null);
       setCurrentPage('login');
+      hideLoading?.();
       return;
     }
 
@@ -218,6 +221,7 @@ export default function Register({ setCurrentPage, setUser, returnTo, setReturnT
     const dest = returnTo || 'home';
     setReturnTo(null);
     setCurrentPage(dest);
+    hideLoading?.();
   };
 
   return (

@@ -18,7 +18,7 @@ export async function getCart() {
   return api.get<CartDto>(`/api/Cart`, { auth: true });
 }
 
-export async function addItem(item: { id: string | number; quantity: number; price?: number }) {
+export async function addItem(item: { id: string | number; quantity: number; price?: number; name?: string; brand?: string; image?: string }) {
   return api.post<CartDto>(`/api/Cart/items`, item, { auth: true });
 }
 

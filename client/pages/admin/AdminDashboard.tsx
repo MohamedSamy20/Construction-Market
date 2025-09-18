@@ -26,7 +26,9 @@ import Header from '../../components/Header';
 import { useTranslation } from '../../hooks/useTranslation';
 import React from 'react';
 import { toastSuccess, toastError } from '../../utils/alerts';
-import { getPendingMerchants, getPendingServices, approveMerchant, suspendMerchant, approveService, rejectService, getUsers, getPendingProducts, approveProduct, rejectProduct, getAdminAnalyticsOverview, getAdminOption, setAdminOption } from '@/services/admin';
+import { getPendingMerchants, getPendingServices, approveMerchant, suspendMerchant, approveService, rejectService, getUsers, getPendingProducts, approveProduct, rejectProduct, getAdminAnalyticsOverview, getAdminOption, setAdminOption, approveTechnician, suspendTechnician, AdminUser } from '@/services/admin';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { getProductById } from '@/services/products';
 
 type Trend = 'up' | 'down';
 
@@ -40,6 +42,16 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
   const [pendingProducts, setPendingProducts] = React.useState<any[]>([]);
   const [pendingServicesError, setPendingServicesError] = React.useState<string | null>(null);
   const [pendingProductsError, setPendingProductsError] = React.useState<string | null>(null);
+  const [pendingTechnicians, setPendingTechnicians] = React.useState<AdminUser[]>([]);
+
+  // Product details dialog state
+  const [productDialogOpen, setProductDialogOpen] = React.useState(false);
+  const [productDialogLoading, setProductDialogLoading] = React.useState(false);
+  const [productDialogData, setProductDialogData] = React.useState<any | null>(null);
+  const [merchantDialogOpen, setMerchantDialogOpen] = React.useState(false);
+  const [merchantDialogData, setMerchantDialogData] = React.useState<AdminUser | null>(null);
+  const [techDialogOpen, setTechDialogOpen] = React.useState(false);
+  const [techDialogData, setTechDialogData] = React.useState<AdminUser | null>(null);
 
   const [stats, setStats] = React.useState({ totalUsers: 0, activeVendors: 0, technicians: 0, pendingCount: 0 });
   const [growthPct, setGrowthPct] = React.useState<{ customers: number; merchants: number; technicians: number }>({ customers: 0, merchants: 0, technicians: 0 });
@@ -82,6 +94,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
       const parseNum = (resp: any) => {
         try { return Number(JSON.parse(String(resp?.data?.value ?? '0')) || 0); } catch { return 0; }
       };
+
       const productsC = parseNum(c1);
       const projectsMerchantsC = parseNum(c2);
       const servicesTechC = parseNum(c3);
@@ -163,6 +176,14 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
         setSales({ daily: 0, weekly: 0, monthly: 0, yearly: 0, currency: 'SAR' });
         setFinance({ monthlyRevenue: 0, platformCommission: 0, pendingVendorPayouts: 0, currency: 'SAR' });
       }
+      // Derive pending technicians: not yet verified/active
+      if (usersTech.ok && usersTech.data && Array.isArray((usersTech.data as any).items)) {
+        const techs: AdminUser[] = ((usersTech.data as any).items) as AdminUser[];
+        const pendingTechs = techs.filter(u => !u.isVerified || !u.isActive);
+        setPendingTechnicians(pendingTechs);
+      } else {
+        setPendingTechnicians([]);
+      }
     } catch (error) {
       console.error('Error loading data:', error);
       setPendingMerchants([]); 
@@ -170,6 +191,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
       setPendingProducts([]); 
       setPendingServicesError(isAr ? 'تعذر الاتصال بالخادم' : 'Failed to contact server');
       setPendingProductsError(isAr ? 'تعذر الاتصال بالخادم' : 'Failed to contact server');
+      setPendingTechnicians([]);
     }
   }, [isAr]); // ✅ Only include stable dependencies
 
@@ -276,6 +298,31 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
     } 
   };
 
+  const openProductDetails = async (id: string) => {
+    try {
+      setProductDialogOpen(true);
+      setProductDialogLoading(true);
+      setProductDialogData(null);
+      const r = await getProductById(String(id));
+      if (r.ok && r.data) setProductDialogData(r.data as any);
+    } catch {
+      setProductDialogData(null);
+    } finally {
+      setProductDialogLoading(false);
+    }
+  };
+
+  // Handlers for viewing user details
+  const openMerchantDetails = (m: AdminUser) => {
+    setMerchantDialogData(m);
+    setMerchantDialogOpen(true);
+  };
+
+  const openTechDetails = (u: AdminUser) => {
+    setTechDialogData(u);
+    setTechDialogOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header {...context} />
@@ -351,6 +398,9 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openMerchantDetails(m)}>
+                      {locale==='ar' ? 'عرض' : 'View'}
+                    </Button>
                     <Button size="sm" variant="outline" onClick={() => doApproveMerchant(m.id)}>
                       <CheckCircle className="h-4 w-4" />
                     </Button>
@@ -363,19 +413,53 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
               {/* Pending products */}
               {pendingProducts.map((p: any) => (
-                <div key={String(p.id)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                <div key={String(p.id)} className="flex flex-col gap-3 p-3 border rounded-lg">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-sm">{p.nameAr || p.nameEn || p.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <Badge variant="secondary">{t('product')}</Badge>
+                        <Badge variant="secondary">{p.merchantName || p.merchantId}</Badge>
+                        {p.price != null && (<Badge variant="outline">{locale==='ar'?'السعر':'Price'}: {new Intl.NumberFormat(locale==='ar'?'ar-EG':'en-US').format(Number(p.price))} {locale==='ar'?'ر.س':'SAR'}</Badge>)}
+                        {p.categoryName && (<Badge variant="outline">{p.categoryName}</Badge>)}
+                        {p.createdAt && (<span className="text-xs text-muted-foreground">{locale==='ar'?'أُنشئ':'Created'}: {new Date(p.createdAt).toLocaleString(locale==='ar'?'ar-EG':'en-US')}</span>)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => openProductDetails(String(p.id))}>
+                        {locale==='ar' ? 'عرض' : 'View'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => doApproveProduct(String(p.id))}>
+                        <CheckCircle className="h-4 w-4" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => doRejectProduct(String(p.id))}>
+                        <Ban className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Pending technicians */}
+              {pendingTechnicians.map((u) => (
+                <div key={u.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
                   <div>
-                    <p className="font-medium text-sm">{p.nameAr || p.nameEn || p.name}</p>
+                    <p className="font-medium text-sm">{u.name || '—'} ({u.email})</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <Badge variant="secondary">{t('product')}</Badge>
-                      <Badge variant="secondary">{p.merchantName || p.merchantId}</Badge>
+                      <Badge variant="secondary">{locale==='ar' ? 'عامل' : 'Technician'}</Badge>
+                      {u.city && <Badge variant="secondary">{u.city}</Badge>}
+                      {u.country && <Badge variant="secondary">{u.country}</Badge>}
+                      {u.createdAt && (<span className="text-xs text-muted-foreground">{locale==='ar'?'مسجّل':'Joined'}: {new Date(u.createdAt).toLocaleDateString(locale==='ar'?'ar-EG':'en-US')}</span>)}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => doApproveProduct(String(p.id))}>
+                    <Button size="sm" variant="outline" onClick={() => openTechDetails(u)}>
+                      {locale==='ar' ? 'عرض' : 'View'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => approveTechnician(String(u.id))}>
                       <CheckCircle className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => doRejectProduct(String(p.id))}>
+                    <Button size="sm" variant="outline" onClick={() => suspendTechnician(String(u.id))}>
                       <Ban className="h-4 w-4" />
                     </Button>
                   </div>
@@ -719,6 +803,126 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
             </div>
           </TabsContent>
         </Tabs>
+
+    {/* Product Details Dialog */
+    /* Hide IDs, show clear labels */}
+    <Dialog open={productDialogOpen} onOpenChange={(o)=> { if (!o) { setProductDialogOpen(false); setProductDialogData(null); } }}>
+      {productDialogOpen && (
+        <DialogContent className="max-w-3xl bg-white dark:bg-zinc-900">
+          <DialogHeader>
+            <DialogTitle>{locale==='ar' ? 'تفاصيل المنتج (قيد الاعتماد)' : 'Product Details (Pending Approval)'}</DialogTitle>
+          </DialogHeader>
+          {productDialogLoading ? (
+            <div className="py-8 text-center text-muted-foreground">{locale==='ar' ? 'جاري التحميل...' : 'Loading...'}</div>
+          ) : productDialogData ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="w-full h-56 border rounded-md overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                    {Array.isArray(productDialogData.images) && productDialogData.images.length > 0 ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={productDialogData.images.find((im:any)=> im?.isPrimary)?.imageUrl || productDialogData.images[0]?.imageUrl} alt="product" className="max-h-full object-contain" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{locale==='ar' ? 'لا توجد صورة' : 'No image'}</span>
+                    )}
+                  </div>
+                  {Array.isArray(productDialogData.images) && productDialogData.images.length > 1 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {productDialogData.images.map((im:any, idx:number)=> (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={idx} src={im.imageUrl} alt={`thumb-${idx}`} className="w-14 h-14 object-cover rounded border" />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="font-medium text-base">{productDialogData.nameAr || productDialogData.nameEn}</div>
+                  <div className="text-muted-foreground">{(productDialogData.descriptionAr || productDialogData.descriptionEn || '').trim() || (locale==='ar'?'لا يوجد وصف':'No description')}</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Badge variant="secondary">{locale==='ar'?'السعر':'Price'}: {new Intl.NumberFormat(locale==='ar'?'ar-EG':'en-US').format(Number(productDialogData.price||0))} {locale==='ar'?'ر.س':'SAR'}</Badge>
+                    {productDialogData.discountPrice ? (<Badge variant="secondary">{locale==='ar'?'السعر بعد الخصم':'Discount'}: {new Intl.NumberFormat(locale==='ar'?'ar-EG':'en-US').format(Number(productDialogData.discountPrice||0))}</Badge>) : null}
+                    <Badge variant="secondary">{locale==='ar'?'المخزون':'Stock'}: {Number(productDialogData.stockQuantity||0)}</Badge>
+                    {productDialogData.categoryName && (<Badge variant="secondary">{locale==='ar'?'القسم: ':'Category: '}{productDialogData.categoryName}</Badge>)}
+                    {productDialogData.merchantName && (<Badge variant="secondary">{locale==='ar'?'التاجر: ':'Merchant: '}{productDialogData.merchantName}</Badge>)}
+                  </div>
+                </div>
+              </div>
+              {Array.isArray(productDialogData.attributes) && productDialogData.attributes.length > 0 && (
+                <div>
+                  <div className="font-medium mb-2">{locale==='ar' ? 'خصائص المنتج' : 'Attributes'}</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    {productDialogData.attributes.map((a:any)=> (
+                      <div key={String(a.id)} className="flex items-center justify-between border rounded px-3 py-2">
+                        <span>{a.nameAr || a.nameEn}</span>
+                        <span className="text-muted-foreground">{a.valueAr || a.valueEn}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="outline" onClick={() => { setProductDialogOpen(false); setProductDialogData(null); }}>{locale==='ar' ? 'إغلاق' : 'Close'}</Button>
+                <Button onClick={() => { setProductDialogOpen(false); void doApproveProduct(String(productDialogData.id || productDialogData._id)); }}>{locale==='ar' ? 'اعتماد' : 'Approve'}</Button>
+                <Button variant="destructive" onClick={() => { setProductDialogOpen(false); void doRejectProduct(String(productDialogData.id || productDialogData._id)); }}>{locale==='ar' ? 'رفض' : 'Reject'}</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">{locale==='ar' ? 'تعذر جلب التفاصيل' : 'Failed to load details'}</div>
+          )}
+        </DialogContent>
+      )}
+    </Dialog>
+
+    {/* Merchant Details Dialog */}
+    <Dialog open={merchantDialogOpen} onOpenChange={(o)=> { if (!o) { setMerchantDialogOpen(false); setMerchantDialogData(null); } }}>
+      {merchantDialogOpen && merchantDialogData && (
+        <DialogContent className="max-w-xl bg-white dark:bg-zinc-900">
+          <DialogHeader>
+            <DialogTitle>{locale==='ar' ? 'تفاصيل التاجر (قيد الاعتماد)' : 'Merchant Details (Pending)'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="font-medium text-base">{merchantDialogData.name}</div>
+            <div className="text-muted-foreground">{merchantDialogData.email}</div>
+            <div className="flex flex-wrap gap-2">
+              {merchantDialogData.companyName && (<Badge variant="secondary">{locale==='ar'?'الشركة: ':'Company: '}{merchantDialogData.companyName}</Badge>)}
+              {merchantDialogData.city && (<Badge variant="secondary">{merchantDialogData.city}</Badge>)}
+              {merchantDialogData.country && (<Badge variant="secondary">{merchantDialogData.country}</Badge>)}
+              {merchantDialogData.createdAt && (<Badge variant="secondary">{locale==='ar'?'تاريخ التسجيل: ':'Joined: '}{new Date(merchantDialogData.createdAt).toLocaleString(locale==='ar'?'ar-EG':'en-US')}</Badge>)}
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={()=> setMerchantDialogOpen(false)}>{locale==='ar'?'إغلاق':'Close'}</Button>
+              <Button onClick={()=> { setMerchantDialogOpen(false); void doApproveMerchant(String(merchantDialogData.id)); }}>{locale==='ar'?'اعتماد':'Approve'}</Button>
+              <Button variant="destructive" onClick={()=> { setMerchantDialogOpen(false); void doSuspendMerchant(String(merchantDialogData.id)); }}>{locale==='ar'?'رفض':'Reject'}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      )}
+    </Dialog>
+
+    {/* Technician Details Dialog */}
+    <Dialog open={techDialogOpen} onOpenChange={(o)=> { if (!o) { setTechDialogOpen(false); setTechDialogData(null); } }}>
+      {techDialogOpen && techDialogData && (
+        <DialogContent className="max-w-xl bg-white dark:bg-zinc-900">
+          <DialogHeader>
+            <DialogTitle>{locale==='ar' ? 'تفاصيل العامل (قيد الاعتماد)' : 'Technician Details (Pending)'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="font-medium text-base">{techDialogData.name || (locale==='ar'?'عامل':'Technician')}</div>
+            <div className="text-muted-foreground">{techDialogData.email}</div>
+            <div className="flex flex-wrap gap-2">
+              {techDialogData.city && (<Badge variant="secondary">{techDialogData.city}</Badge>)}
+              {techDialogData.country && (<Badge variant="secondary">{techDialogData.country}</Badge>)}
+              {techDialogData.createdAt && (<Badge variant="secondary">{locale==='ar'?'تاريخ التسجيل: ':'Joined: '}{new Date(techDialogData.createdAt).toLocaleString(locale==='ar'?'ar-EG':'en-US')}</Badge>)}
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={()=> setTechDialogOpen(false)}>{locale==='ar'?'إغلاق':'Close'}</Button>
+              <Button onClick={()=> { setTechDialogOpen(false); void approveTechnician(String(techDialogData.id)); }}>{locale==='ar'?'اعتماد':'Approve'}</Button>
+              <Button variant="destructive" onClick={()=> { setTechDialogOpen(false); void suspendTechnician(String(techDialogData.id)); }}>{locale==='ar'?'رفض':'Reject'}</Button>
+            </div>
+          </div>
+        </DialogContent>
+      )}
+    </Dialog>
       </div>
     </div>
   );

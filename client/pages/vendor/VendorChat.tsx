@@ -21,6 +21,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
   const [text, setText] = useState<string>("");
   const endRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const [vendorName, setVendorName] = useState<string>("");
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -59,6 +60,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
           setServiceId(String((c.data as any).serviceRequestId || serviceId));
           setVendorId((c.data as any).vendorId || vendorId);
           setTechnicianName((c.data as any).technicianName || "");
+          setVendorName((c.data as any).vendorName || "");
         }
       } catch {}
     })();
@@ -133,7 +135,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-base">
               <span>{isAr ? 'مراسلة الفني' : 'Message Technician'}</span>
-              <div className="text-xs text-muted-foreground">{isAr ? `فني: ${technicianName || technicianId} • خدمة: #${serviceId}` : `Tech: ${technicianName || technicianId} • Service: #${serviceId}`}</div>
+              <div className="text-xs text-muted-foreground">{isAr ? `الفني: ${technicianName || 'غير معرّف'} • الخدمة: #${serviceId}` : `Tech: ${technicianName || 'Unknown'} • Service: #${serviceId}`}</div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -148,16 +150,20 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {messages.map((m, i) => (
-                    <div key={m.id ?? i} className={`flex ${m.from === vendorId ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${m.from === vendorId ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
-                        <div>{m.text}</div>
-                        <div className="text-[10px] opacity-70 mt-1">
-                          {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
+                  {messages.map((m, i) => {
+                    const isMine = m.from === vendorId;
+                    const senderName = m.from === vendorId ? (vendorName || (isAr ? 'أنا' : 'Me')) : (technicianName || (isAr ? 'الفني' : 'Technician'));
+                    return (
+                      <div key={m.id ?? i} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${isMine ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
+                          <div>{m.text}</div>
+                          <div className={`text-[10px] opacity-70 mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
+                            {senderName} • {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={endRef} />
                 </div>
               )}

@@ -112,8 +112,8 @@ export default function Cart({ setCurrentPage, cartItems, updateCartQty, removeF
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
-            {items.map(item => (
-              <Card key={item.id}>
+            {items.map((item, idx) => (
+              <Card key={`${item.id}-${idx}`}>
                 <CardContent className="p-4">
                   <div className="flex gap-4">
                     <div className="relative">

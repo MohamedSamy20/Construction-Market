@@ -15,7 +15,7 @@ import { toastInfo } from '../utils/alerts';
 
 interface LoginProps extends RouteContext {}
 
-export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, user, cartItems }: LoginProps) {
+export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, user, cartItems, showLoading, hideLoading }: LoginProps) {
   const { t, locale } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,11 +76,13 @@ export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, 
     }
     setError(null);
 
+    showLoading?.(isAr ? 'جاري تسجيل الدخول...' : 'Signing you in...', isAr ? 'يرجى الانتظار قليلاً' : 'Please wait a moment');
     const { ok, data, error, status } = await apiLogin({ email, password }) as any;
     if (!ok || !data) {
       const serverMsg = (data as any)?.message || (error && (typeof error === 'string' ? error : (error?.message || '')));
       const msg = friendlyAuthMessage(status, serverMsg);
       setError(msg);
+      hideLoading?.();
       return;
     }
 
@@ -125,6 +127,7 @@ export default function Login({ setCurrentPage, setUser, returnTo, setReturnTo, 
     } else {
       setCurrentPage(roleDest(uiRole));
     }
+    hideLoading?.();
   };
 
   // Removed demo quick login helpers

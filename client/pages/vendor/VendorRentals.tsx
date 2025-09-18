@@ -34,8 +34,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const [saving, setSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<any|null>(null);
-  const [editStart, setEditStart] = useState('');
-  const [editEnd, setEditEnd] = useState('');
+  // Dates are set by technician, not vendor
   const [editRate, setEditRate] = useState('');
   const [editDeposit, setEditDeposit] = useState('');
   const [editCurrency, setEditCurrency] = useState('SAR');
@@ -55,8 +54,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const [machineName, setMachineName] = useState<string>('');
   const [productId, setProductId] = useState<string>('');
   const [customerId, setCustomerId] = useState<string>('');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  // Dates are set by technician, not vendor
   const [dailyRate, setDailyRate] = useState<string>('');
   const [securityDeposit, setSecurityDeposit] = useState<string>('');
   const [currency, setCurrency] = useState<string>('SAR');
@@ -77,16 +75,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   // Derived calculations for create form
   const parsedDaily = Number(dailyRate || 0) || 0;
   const parsedDeposit = Number(securityDeposit || 0) || 0;
-  const days = (() => {
-    if (!startDate || !endDate) return 0;
-    try {
-      const s = new Date(startDate + 'T00:00:00');
-      const e = new Date(endDate + 'T00:00:00');
-      const diff = Math.floor((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      return Math.max(1, diff);
-    } catch { return 0; }
-  })();
-  const computedTotal = (parsedDaily * (days || 0)) + parsedDeposit;
+  // Total will be computed later by technician based on agreed dates
   const [commissionPct, setCommissionPct] = useState<number>(0);
   const [ratesCurrency, setRatesCurrency] = useState<string>('SAR');
 
@@ -138,7 +127,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   }, [searchTerm, selectedCategory, selectedStatus, rentals]);
 
   const resetForm = () => {
-    setMachineName(''); setProductId(''); setCustomerId(''); setStartDate(''); setEndDate(''); setDailyRate(''); setSecurityDeposit('');
+    setMachineName(''); setProductId(''); setCustomerId(''); setDailyRate(''); setSecurityDeposit('');
     setCurrency('SAR'); setRequiresDelivery(false); setDeliveryAddress(''); setDeliveryFee(''); setRequiresPickup(false); setPickupFee(''); setSpecialInstructions(''); setUsageNotes(''); setImages([]);
   };
 
@@ -218,8 +207,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
 
   const openEdit = (r:any) => {
     setEditTarget(r);
-    setEditStart(String(r.startDate).slice(0,10));
-    setEditEnd(String(r.endDate).slice(0,10));
+    // Dates are not editable by vendor
     setEditRate(String(r.dailyRate ?? ''));
     setEditDeposit(String(r.securityDeposit ?? ''));
     setEditCurrency(String(r.currency || 'SAR'));
@@ -235,8 +223,6 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     try {
       setSaving(true);
       const res = await updateRental(String(editTarget.id), {
-        startDate: editStart,
-        endDate: editEnd,
         dailyRate: Number(editRate||0),
         securityDeposit: editDeposit ? Number(editDeposit) : 0,
         currency: editCurrency,
@@ -275,7 +261,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     try {
       // If no matched product, allow creation without linking a product (backend supports optional productId)
       const effectiveProductId = productId || (myProducts?.[0]?.id ? String(myProducts[0].id) : '');
-      if (!startDate || !endDate || !dailyRate || !securityDeposit) {
+      if (!dailyRate || !securityDeposit) {
         toastError(locale==='ar'? 'يرجى تعبئة الحقول المطلوبة' : 'Please fill required fields', locale==='ar');
         return;
       }
@@ -291,11 +277,10 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         }
       } catch {}
 
-      const payload: CreateRentalInput = {
+      const payload: any = {
         productId: effectiveProductId ? String(effectiveProductId) : undefined,
         productName: machineName ? machineName.trim() : undefined,
         customerId: (customerId || '').trim(),
-        startDate, endDate,
         dailyRate: Number(dailyRate),
         currency,
         securityDeposit: Number(securityDeposit),
@@ -407,14 +392,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                       </div>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    <Label>{locale==='ar'? 'تاريخ البدء' : 'Start date'}</Label>
-                    <Input type="date" value={startDate} onChange={(e)=> setStartDate(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{locale==='ar'? 'تاريخ الانتهاء' : 'End date'}</Label>
-                    <Input type="date" value={endDate} onChange={(e)=> setEndDate(e.target.value)} />
-                  </div>
+                  {/* Dates removed: technician will set the schedule */}
                   <div className="space-y-2">
                     <Label>{locale==='ar'? 'سعر اليوم' : 'Daily rate'}</Label>
                     <Input type="number" inputMode="decimal" value={dailyRate} onChange={(e)=> setDailyRate(e.target.value)} placeholder="0.00" />
@@ -423,34 +401,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                     <Label>{locale==='ar'? 'تأمين (إجباري)' : 'Security deposit (required)'}</Label>
                     <Input type="number" inputMode="decimal" value={securityDeposit} onChange={(e)=> setSecurityDeposit(e.target.value)} placeholder="0.00" required />
                   </div>
-                  {/* Auto-calculated summary */}
-                  <div className="space-y-1 md:col-span-2">
-                    <div className="text-sm text-muted-foreground">
-                      {locale==='ar' ? 'الأيام' : 'Days'}: <span className="font-medium">{days || 0}</span>
-                    </div>
-                    <div className="text-sm">
-                      {locale==='ar' ? 'الإجمالي (يحسب تلقائيًا = الأيام × سعر اليوم + التأمين)' : 'Total (auto = days × daily + deposit)'}:
-                      <span className="ml-1 font-semibold">{computedTotal.toLocaleString(locale==='ar' ? 'ar-EG' : 'en-US')}</span>
-                      <span className="ml-1 text-muted-foreground">{currency}</span>
-                    </div>
-                    {(() => {
-                      const v = Number(computedTotal || 0);
-                      if (!isFinite(v) || v <= 0) return null;
-                      const comm = Math.round(v * (commissionPct / 100));
-                      const net = Math.max(v - comm, 0);
-                      const numLocale = locale === 'ar' ? 'ar-EG' : 'en-US';
-                      return (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          <div>
-                            {locale==='ar' ? 'عمولة التأجير' : 'Rental commission'} {commissionPct}%: {comm.toLocaleString(numLocale)} {ratesCurrency==='SAR' ? (locale==='ar'?'ر.س':'SAR') : ratesCurrency}
-                          </div>
-                          <div>
-                            {locale==='ar' ? 'الصافي بعد الخصم' : 'Net after commission'}: {net.toLocaleString(numLocale)} {ratesCurrency==='SAR' ? (locale==='ar'?'ر.س':'SAR') : ratesCurrency}
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
+                  {/* Summary removed; totals depend on technician-set dates */}
                   <div className="space-y-2">
                     <Label>{locale==='ar'? 'العملة' : 'Currency'}</Label>
                     <Input value={currency} readOnly placeholder="SAR" />
@@ -597,14 +548,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                   </div>
                 )}
               </div>
-              <div>
-                <Label>{locale==='ar'? 'تاريخ البدء' : 'Start date'}</Label>
-                <Input type="date" value={editStart} onChange={(e)=> setEditStart(e.target.value)} />
-              </div>
-              <div>
-                <Label>{locale==='ar'? 'تاريخ الانتهاء' : 'End date'}</Label>
-                <Input type="date" value={editEnd} onChange={(e)=> setEditEnd(e.target.value)} />
-              </div>
+              {/* Dates removed from edit as well */}
               <div>
                 <Label>{locale==='ar'? 'سعر اليوم' : 'Daily rate'}</Label>
                 <Input type="number" inputMode="decimal" value={editRate} onChange={(e)=> setEditRate(e.target.value)} />

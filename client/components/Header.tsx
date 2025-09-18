@@ -48,6 +48,14 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           const c1 = rentalsCnt.ok ? Number((rentalsCnt.data as any)?.count || 0) : 0;
           const c2 = projectCnt.ok ? Number((projectCnt.data as any)?.count || 0) : 0;
           setVendorMsgCount(c1 + c2);
+        } else if (role === 'worker' || role === 'technician') {
+          // Technician: count unread chat.message notifications
+          try {
+            const notif = await listMyNotifications();
+            const arr = (notif.ok && (notif.data as any)?.success) ? (((notif.data as any).data || []) as any[]) : [];
+            const unread = arr.filter((n:any)=> String(n.type||'')==='chat.message' && !n.read).length;
+            setVendorMsgCount(unread);
+          } catch { setVendorMsgCount(0); }
         } else if (role === 'customer' || isCustomerRole) {
           const [rentalsCnt, projectCnt] = await Promise.all([
             getCustomerMessageCount(),
@@ -91,7 +99,7 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
   const role = (user?.role || '').toString().toLowerCase();
   const isAdmin = role === 'admin';
   const isVendor = role === 'vendor';
-  const isWorker = role === 'worker';
+  const isWorker = role === 'worker' || role === 'technician';
   const isCustomerRole = !isVendor && !isAdmin && !isWorker && !!user; // treat any other logged-in role as customer
   // Restrict header content on admin pages: only greeting, logout, language, and notifications
   const isRestricted = isAdmin && current.startsWith('admin-');
@@ -146,6 +154,32 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           }
         } catch {}
         const merged = [...mappedR, ...mappedP, ...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
+        setNotifications(merged);
+        return;
+      } else if (role === 'worker') {
+        // Technician: rely on unified notifications with type 'chat.message'
+        let mappedChat: any[] = [];
+        try {
+          const notif = await listMyNotifications();
+          if (notif.ok && (notif.data as any)?.success) {
+            const arr = ((notif.data as any).data || []) as any[];
+            mappedChat = arr
+              .filter((n:any)=> String(n.type||'') === 'chat.message')
+              .map((n:any)=> ({
+                type: 'chat.message',
+                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
+                message: n.message,
+                createdAt: n.createdAt,
+                conversationId: n?.data?.conversationId,
+                _id: n?._id,
+                read: !!n?.read,
+              }));
+          }
+        } catch {}
+        // For badge: count unread chat messages if possible
+        const unreadCount = mappedChat.filter((x:any)=> !x.read).length;
+        setVendorMsgCount(unreadCount);
+        const merged = [...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
         setNotifications(merged);
         return;
       } else if (role === 'customer' || isCustomerRole) {
@@ -377,6 +411,11 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                                   if (n.type === 'project' || n.projectId || n.conversationId) {
                                     if (n.projectId) localStorage.setItem('project_chat_project_id', String(n.projectId));
                                     if (n.conversationId) localStorage.setItem('project_chat_conversation_id', String(n.conversationId));
+                                    // Ensure merchant id/name are available for ProjectChat resolution
+                                    try {
+                                      if (user?.id) localStorage.setItem('project_chat_merchant_id', String(user.id));
+                                      if (displayName) localStorage.setItem('project_chat_merchant_name', String(displayName));
+                                    } catch {}
                                   } else if (n.rentalId) {
                                     localStorage.setItem('open_messages_rental', String(n.rentalId));
                                     // Dispatch an event so vendor-rentals page can react immediately without reload
@@ -387,7 +426,16 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                                 } catch {}
                                 if (setCurrentPage) {
                                   if (n.type === 'project' || n.projectId || n.conversationId) {
-                                    setCurrentPage('project-chat');
+                                    // Prefer URL with params when possible
+                                    try {
+                                      const url = new URL(window.location.href);
+                                      url.searchParams.set('page','project-chat');
+                                      if (n.projectId) url.searchParams.set('projectId', String(n.projectId));
+                                      if (n.conversationId) url.searchParams.set('conversationId', String(n.conversationId));
+                                      window.location.href = url.toString();
+                                    } catch {
+                                      setCurrentPage('project-chat');
+                                    }
                                   } else {
                                     setCurrentPage('vendor-rentals');
                                   }
@@ -396,6 +444,8 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                                     const url = new URL(window.location.href);
                                     if (n.type === 'project' || n.projectId || n.conversationId) {
                                       url.searchParams.set('page','project-chat');
+                                      if (n.projectId) url.searchParams.set('projectId', String(n.projectId));
+                                      if (n.conversationId) url.searchParams.set('conversationId', String(n.conversationId));
                                     } else {
                                       url.searchParams.set('page','vendor-rentals');
                                       if (n.rentalId) url.searchParams.set('openMessagesFor', String(n.rentalId||''));
@@ -415,7 +465,15 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                                 } catch {}
                                 if (setCurrentPage) {
                                   if (n.type === 'project' || n.projectId || n.conversationId) {
-                                    setCurrentPage('project-chat');
+                                    try {
+                                      const url = new URL(window.location.href);
+                                      url.searchParams.set('page','project-chat');
+                                      if (n.projectId) url.searchParams.set('projectId', String(n.projectId));
+                                      if (n.conversationId) url.searchParams.set('conversationId', String(n.conversationId));
+                                      window.location.href = url.toString();
+                                    } catch {
+                                      setCurrentPage('project-chat');
+                                    }
                                   } else {
                                     setCurrentPage('rental-contract');
                                   }
@@ -424,6 +482,8 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                                     const url = new URL(window.location.href);
                                     if (n.type === 'project' || n.projectId || n.conversationId) {
                                       url.searchParams.set('page','project-chat');
+                                      if (n.projectId) url.searchParams.set('projectId', String(n.projectId));
+                                      if (n.conversationId) url.searchParams.set('conversationId', String(n.conversationId));
                                     } else {
                                       url.searchParams.set('page','rental-contract');
                                       if (n.rentalId) url.searchParams.set('id', String(n.rentalId));

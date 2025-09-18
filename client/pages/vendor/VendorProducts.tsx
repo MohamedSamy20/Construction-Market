@@ -19,7 +19,7 @@ import { confirmDialog, toastSuccess, toastError, toastInfo } from '../../utils/
 
 type VendorProductsProps = Partial<RouteContext>;
 
-export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...context }: VendorProductsProps) {
+export default function VendorProducts({ setCurrentPage, setSelectedProduct, showLoading, hideLoading, ...context }: VendorProductsProps) {
   const { locale } = useTranslation();
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
@@ -43,10 +43,12 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
     let cancelled = false;
 
     const load = async () => {
+      showLoading?.(locale==='ar' ? 'جاري تحميل المنتجات...' : 'Loading products...');
       const token = getToken?.();
       if (!token) { if (!cancelled) setProducts([]); return; }
       try {
         const { ok, data } = await getMyProducts();
+
         if (ok && Array.isArray(data)) {
           const list = data.map((p: any) => ({
             id: (p as any).id || (p as any)._id,
@@ -85,6 +87,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
           return;
         }
       } catch {}
+      finally { hideLoading?.(); }
       if (!cancelled) setProducts([]);
     };
 
@@ -255,6 +258,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
   };
 
   const handleAddProduct = async (productData: any) => {
+    showLoading?.(locale==='ar' ? 'جاري إنشاء المنتج...' : 'Creating product...', locale==='ar' ? 'يرجى الانتظار قليلاً' : 'Please wait a moment');
     // Map to backend CreateProductDto
     const payload = {
       nameEn: String(productData?.nameEn || ''),
@@ -279,6 +283,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
           : `تعذر إنشاء المنتج${status ? ` (رمز ${status})` : ''}`,
         locale === 'ar'
       );
+      hideLoading?.();
       return;
     }
     const newId = ((created?.data as any)?.id) || ((created?.data as any)?._id) || ((created?.data as any)?.Id);
@@ -317,9 +322,11 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
     // Inform vendor that item awaits admin approval
     try { alert(locale === 'en' ? 'Your product was submitted and is pending admin approval.' : 'تم إرسال منتجك وهو قيد المراجعة من الأدمن.'); } catch {}
     await reload();
+    hideLoading?.();
   };
 
   const handleEditProduct = async (productData: any) => {
+    showLoading?.(locale==='ar' ? 'جاري حفظ التعديلات...' : 'Saving changes...', locale==='ar' ? 'يرجى الانتظار قليلاً' : 'Please wait a moment');
     const payload = {
       nameEn: String(productData?.nameEn || ''),
       nameAr: String(productData?.nameAr || productData?.name || ''),
@@ -365,6 +372,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, ...
     }
     setEditingProduct(null);
     await reload();
+    hideLoading?.();
   };
 
   const handleDeleteProduct = async (productId: string) => {
