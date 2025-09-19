@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { logout as apiLogout } from '@/services/auth';
 import { getVendorMessageCount, getRecentVendorMessages, getCustomerMessageCount, getCustomerRecentMessages } from '@/services/rentals';
 import { getVendorProjectMessageCount, getVendorProjectRecentMessages, getCustomerProjectMessageCount, getCustomerProjectRecentMessages } from '@/services/projectChat';
-import { listMyNotifications, markNotificationRead } from '@/services/notifications';
+import { listMyNotifications, markNotificationRead, markAllNotificationsRead } from '@/services/notifications';
 import { getConversation } from '@/services/chat';
 
 interface HeaderProps extends Partial<RouteContext> {
@@ -34,12 +34,23 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
       }
     }
   };
-  // Vendor/customer message count badge (rentals + project chat)
+  // Unified notification badge: count unread notifications
   useEffect(() => {
     let timer: any;
     async function fetchCount() {
       try {
         if (!user) { setVendorMsgCount(0); return; }
+        // Prefer unified unread notifications count
+        try {
+          const notif = await listMyNotifications({ unread: true });
+          if (notif.ok && (notif.data as any)?.success) {
+            const arr = (((notif.data as any).data) || []) as any[];
+            setVendorMsgCount(arr.length);
+            return;
+          }
+        } catch { /* fall back below */ }
+
+        // Fallback by role (legacy counts)
         if (role === 'vendor') {
           const [rentalsCnt, projectCnt] = await Promise.all([
             getVendorMessageCount(),
@@ -48,14 +59,6 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           const c1 = rentalsCnt.ok ? Number((rentalsCnt.data as any)?.count || 0) : 0;
           const c2 = projectCnt.ok ? Number((projectCnt.data as any)?.count || 0) : 0;
           setVendorMsgCount(c1 + c2);
-        } else if (role === 'worker' || role === 'technician') {
-          // Technician: count unread chat.message notifications
-          try {
-            const notif = await listMyNotifications();
-            const arr = (notif.ok && (notif.data as any)?.success) ? (((notif.data as any).data || []) as any[]) : [];
-            const unread = arr.filter((n:any)=> String(n.type||'')==='chat.message' && !n.read).length;
-            setVendorMsgCount(unread);
-          } catch { setVendorMsgCount(0); }
         } else if (role === 'customer' || isCustomerRole) {
           const [rentalsCnt, projectCnt] = await Promise.all([
             getCustomerMessageCount(),
@@ -64,9 +67,10 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           const c1 = rentalsCnt.ok ? Number((rentalsCnt.data as any)?.count || 0) : 0;
           const c2 = projectCnt.ok ? Number((projectCnt.data as any)?.count || 0) : 0;
           setVendorMsgCount(c1 + c2);
-        } else {
+        } else if (role === 'worker' || role === 'technician') {
+          // If unread endpoint failed above, set 0 for workers as we cannot infer
           setVendorMsgCount(0);
-        }
+        } else { setVendorMsgCount(0); }
       } catch { /* ignore */ }
     }
     fetchCount();
@@ -310,8 +314,8 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                 ) : (
                   <button onClick={() => go('projects')} className="text-foreground hover:text-primary transition-colors">{t('projects') || (locale==='ar'?'المشاريع':'Projects')}</button>
                 )}
-                {/* Rentals: show only for logged-in, non-worker users */}
-                {user && !isWorker && (
+                {/* Rentals: show for all logged-in users, including technicians */}
+                {user && (
                   <button onClick={() => go('rentals')} className="text-foreground hover:text-primary transition-colors">{locale==='ar' ? 'التأجير' : 'Rentals'}</button>
                 )}
                 {/* Removed separate technician quick link as services replaces projects above */}
@@ -338,7 +342,7 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                 <LanguageSwitcher />
                 {/* Guest favorites button removed per request */}
                 {user && (
-                  <Popover open={notifOpen} onOpenChange={(o)=>{ setNotifOpen(o); if (o) { loadNotifications(); setVendorMsgCount(0); } }}>
+                  <Popover open={notifOpen} onOpenChange={async (o)=>{ setNotifOpen(o); if (o) { await markAllNotificationsRead().catch(()=>{}); loadNotifications(); setVendorMsgCount(0); } }}>
                     <PopoverTrigger asChild>
                       <Button
                         variant="ghost"
@@ -350,7 +354,7 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                         title={locale==='ar' ? 'التنبيهات' : 'Notifications'}
                       >
                         <Bell className="w-5 h-5" />
-                        {(role === 'vendor' || role === 'customer') && vendorMsgCount > 0 && (
+                        {vendorMsgCount > 0 && (
                           <Badge className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full px-1 flex items-center justify-center text-xs">
                             {vendorMsgCount}
                           </Badge>

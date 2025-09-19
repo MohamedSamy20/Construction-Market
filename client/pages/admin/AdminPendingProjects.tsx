@@ -8,10 +8,12 @@ import { Badge } from '../../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { getPendingProjects, approveProject, rejectProject, getAdminProjectById, getAdminProjectBids } from '@/services/admin';
 import { toastError, toastSuccess } from '../../utils/alerts';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminPendingProjects({ setCurrentPage, ...rest }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(rest, isAr ? 'جاري تحميل المشاريع قيد الاعتماد' : 'Loading pending projects', isAr ? 'يرجى الانتظار' : 'Please wait');
   const [items, setItems] = React.useState<Array<{ id: number; title: string; description?: string; customerId: string; customerName?: string; categoryId: number; createdAt: string }>>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -34,7 +36,7 @@ export default function AdminPendingProjects({ setCurrentPage, ...rest }: Partia
     }
   }, [isAr]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => { (async ()=>{ await load(); hideFirstOverlay(); })(); }, [load]);
 
   const normalizeStatus = (raw: any): string => {
     if (raw === undefined || raw === null) return '';

@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Separator } from '../../components/ui/separator';
 import { getAdminProjectById, getAdminProjectBids } from '@/services/admin';
 import { ArrowLeft } from 'lucide-react';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 function normalizeStatus(raw: any): string {
   if (raw === undefined || raw === null) return '';
@@ -37,6 +38,7 @@ function statusBadgeVariant(status: string): 'default' | 'secondary' | 'outline'
 export default function AdminProjectDetails({ setCurrentPage, ...ctx }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(ctx, isAr ? 'جاري تحميل تفاصيل المشروع' : 'Loading project details', isAr ? 'يرجى الانتظار' : 'Please wait');
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [project, setProject] = React.useState<any | null>(null);
@@ -82,6 +84,7 @@ export default function AdminProjectDetails({ setCurrentPage, ...ctx }: Partial<
   }, [projectId, isAr]);
 
   React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => { if (!loading) hideFirstOverlay(); }, [loading]);
 
   const back = () => {
     setCurrentPage && setCurrentPage('admin-all-projects');

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -9,6 +9,7 @@ import { Eye } from "lucide-react";
 import { useTranslation } from "../../hooks/useTranslation";
 import type { RouteContext } from "../../components/routerTypes";
 import { listVendorServices, completeService } from "@/services/servicesCatalog";
+import { useFirstLoadOverlay } from "../../hooks/useFirstLoadOverlay";
 
 type Props = Partial<RouteContext>;
 
@@ -21,6 +22,13 @@ export default function VendorServices({ setCurrentPage, ...context }: Props) {
   const [userServices, setUserServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Only show the global overlay once on the first load
+  const firstLoadRef = useRef(true);
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale === 'ar' ? 'جاري تحميل خدماتك' : 'Loading your services',
+    locale === 'ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const loadServices = async () => {
     setFetchError(null);
@@ -39,6 +47,7 @@ export default function VendorServices({ setCurrentPage, ...context }: Props) {
       setFetchError(locale==='ar' ? 'حدث خطأ أثناء الجلب' : 'An error occurred while fetching');
     } finally {
       setLoading(false);
+      if (firstLoadRef.current) { hideFirstOverlay(); firstLoadRef.current = false; }
     }
   };
 

@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
+import { useFirstLoadOverlay } from '../hooks/useFirstLoadOverlay';
 
 // Product types & materials are loaded from admin options at runtime
 
@@ -84,6 +85,11 @@ function computeTotal(w:number, h:number, l:number|undefined, ppm:number, qty:nu
 export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContext) {
   const { t, locale } = useTranslation();
   const currency = locale === 'ar' ? 'ر.س' : 'SAR';
+  const hideFirstOverlay = useFirstLoadOverlay(
+    rest,
+    locale==='ar' ? 'جاري تحميل صفحة إنشاء المشروع' : 'Loading project builder',
+    locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   // Admin-configured catalogs
   const [productTypes, setProductTypes] = useState<Array<{ id: string; en?: string; ar?: string }>>([]);
@@ -149,6 +155,7 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
           setCatalog(cat);
         }
       } catch {}
+      finally { if (!cancelled) { try { hideFirstOverlay(); } catch {} } }
     })();
     return () => { cancelled = true; };
   }, []);

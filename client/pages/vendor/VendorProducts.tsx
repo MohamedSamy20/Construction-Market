@@ -16,6 +16,7 @@ import { api } from '@/lib/api';
 import { getToken } from '@/services/auth';
 import { useTranslation } from '../../hooks/useTranslation';
 import { confirmDialog, toastSuccess, toastError, toastInfo } from '../../utils/alerts';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 type VendorProductsProps = Partial<RouteContext>;
 
@@ -38,6 +39,12 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, sho
 
   // Safe navigation fallback to avoid TS issues and preserve SPA context
   const safeSetCurrentPage = setCurrentPage ?? (() => {});
+  // First-load overlay
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale==='ar' ? 'جاري تحميل المنتجات' : 'Loading products',
+    locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
   // Load products: use backend (my products)
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +52,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, sho
     const load = async () => {
       showLoading?.(locale==='ar' ? 'جاري تحميل المنتجات...' : 'Loading products...');
       const token = getToken?.();
-      if (!token) { if (!cancelled) setProducts([]); return; }
+      if (!token) { if (!cancelled) setProducts([]); hideFirstOverlay(); return; }
       try {
         const { ok, data } = await getMyProducts();
 
@@ -87,7 +94,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, sho
           return;
         }
       } catch {}
-      finally { hideLoading?.(); }
+      finally { hideLoading?.(); hideFirstOverlay(); }
       if (!cancelled) setProducts([]);
     };
 
@@ -320,7 +327,7 @@ export default function VendorProducts({ setCurrentPage, setSelectedProduct, sho
     }
     setIsAddDialogOpen(false);
     // Inform vendor that item awaits admin approval
-    try { alert(locale === 'en' ? 'Your product was submitted and is pending admin approval.' : 'تم إرسال منتجك وهو قيد المراجعة من الأدمن.'); } catch {}
+    try { toastSuccess(locale==='en' ? 'Product created. Pending admin approval.' : 'تم إنشاء المنتج وهو قيد المراجعة من الإدارة.', locale==='ar'); } catch {}
     await reload();
     hideLoading?.();
   };

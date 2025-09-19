@@ -14,6 +14,19 @@ const NORMALIZED_BASE = (() => {
   }
 })();
 
+// Runtime base: when developing on localhost, prefer local backend to avoid CORS with remote
+const RUNTIME_BASE = (() => {
+  try {
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http://localhost:4000';
+      }
+    }
+  } catch {}
+  return NORMALIZED_BASE;
+})();
+
 function getAuthToken(): string | null {
   try {
     if (typeof window === 'undefined') return null;
@@ -70,16 +83,17 @@ export async function apiFetch<T>(path: string, options?: {
   headers?: Record<string, string>;
   auth?: boolean; // include bearer token from storage (default: true)
   signal?: AbortSignal;
+  cache?: RequestCache; // e.g., 'no-store' to bypass 304 caches
 }): Promise<{ data: T | null; ok: boolean; status: number; error?: any }> {
 
   const url = path.startsWith('http')
     ? path
     : (() => {
-        const hasApiOnBase = /\/api\/?$/.test(NORMALIZED_BASE);
+        const hasApiOnBase = /\/api\/?$/.test(RUNTIME_BASE);
         const startsWithApi = path.startsWith('/api');
         const base = hasApiOnBase && startsWithApi
-          ? NORMALIZED_BASE.replace(/\/api\/?$/, '')
-          : NORMALIZED_BASE;
+          ? RUNTIME_BASE.replace(/\/api\/?$/, '')
+          : RUNTIME_BASE;
         return `${base}${path.startsWith('/') ? path : `/${path}`}`;
       })();
   const isForm = typeof FormData !== 'undefined' && options?.body instanceof FormData;
@@ -123,6 +137,7 @@ export async function apiFetch<T>(path: string, options?: {
       headers,
       body: options?.body ? (isForm ? options.body : JSON.stringify(options.body)) : undefined,
       signal: options?.signal,
+      cache: options?.cache,
 
       // Include cookies when authenticated or for cross-origin (different port/domain) requests
       credentials: useCredentials || isCrossOrigin ? 'include' : 'same-origin',

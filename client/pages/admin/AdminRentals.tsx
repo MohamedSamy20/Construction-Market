@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { Button } from '../../components/ui/button';
@@ -17,15 +17,28 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
   const [loading, setLoading] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
+  const firstLoadRef = useRef(true);
 
   const load = async () => {
     setLoading(true);
     try {
+      if (firstLoadRef.current && typeof (rest as any)?.showLoading === 'function') {
+        (rest as any).showLoading(
+          locale==='ar' ? 'جاري تحميل العقود' : 'Loading rentals',
+          locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+        );
+      }
       // Load all rentals (pending + approved)
       const r = await getAllRentals();
       if (r.ok && Array.isArray(r.data)) setItems(r.data as any[]);
       else setItems([]);
-    } finally { setLoading(false); }
+    } finally { 
+      setLoading(false); 
+      if (firstLoadRef.current && typeof (rest as any)?.hideLoading === 'function') {
+        (rest as any).hideLoading();
+        firstLoadRef.current = false;
+      }
+    }
   };
 
   useEffect(() => { load(); }, []);

@@ -8,9 +8,11 @@ import { Progress } from '../../components/ui/progress';
 import { BarChart3, TrendingUp, TrendingDown, DollarSign, Users, Package, ArrowRight } from 'lucide-react';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getAdminAnalyticsOverview, getAdminOption, setAdminOption } from '@/services/admin';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminReports({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(context, locale==='ar' ? 'جاري تحميل التقارير' : 'Loading reports', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const nf = (n: number, cur: string) => `${new Intl.NumberFormat(locale==='ar'?'ar-EG':'en-US').format(n)} ${cur==='SAR'?'SAR':cur}`;
 
   const [stats, setStats] = React.useState<{ totalUsers: number }>({ totalUsers: 0 });
@@ -85,7 +87,7 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
         setCommDraft({ products: String(p), projectsMerchants: String(pm), servicesTechnicians: String(st) });
       } catch (e) {
         console.error('Failed to load reports data', e);
-      }
+      } finally { hideFirstOverlay(); }
     })();
   }, [locale]);
   return (

@@ -6,9 +6,11 @@ import { Input } from '../../components/ui/input';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { RouteContext } from '../../components/Router';
 import { getPublicServices, type ServiceItem, getServiceTypes, type ServiceTypeItem, getAdminPendingServices, approveService, rejectService } from '@/services/services';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminServiceOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(props, locale==='ar' ? 'جاري تحميل الخدمات' : 'Loading services', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const isAdmin = (props.user?.role || '').toLowerCase() === 'admin';
   const [tab, setTab] = useState<'public' | 'pending'>('public');
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -38,6 +40,7 @@ export default function AdminServiceOptions(props: Partial<RouteContext>) {
         }
       } finally {
         if (!cancelled) setLoading(false);
+        if (!cancelled) hideFirstOverlay();
       }
     })();
     return () => { cancelled = true; };

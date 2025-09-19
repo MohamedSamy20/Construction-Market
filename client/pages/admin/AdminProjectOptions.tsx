@@ -8,6 +8,7 @@ import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
 import { getAdminOption, setAdminOption } from '@/services/admin';
 import { toastError, toastSuccess } from '../../utils/alerts';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 type Labeled = { id: string; en?: string; ar?: string };
 type Accessory = { id: string; en?: string; ar?: string; price?: number };
@@ -28,6 +29,7 @@ type Catalog = { products: ProductCfg[] };
 export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(rest, isAr ? 'جاري تحميل خيارات المشاريع' : 'Loading project options', isAr ? 'يرجى الانتظار' : 'Please wait');
 
   const [loading, setLoading] = React.useState(true);
   const [products, setProducts] = React.useState<ProductCfg[]>([]);
@@ -47,6 +49,12 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
   const [draftMaterial, setDraftMaterial] = React.useState<{ [pid: string]: Labeled }>({});
   const [draftColor, setDraftColor] = React.useState<{ [pid: string]: Labeled }>({});
   const [draftAccessory, setDraftAccessory] = React.useState<{ [pid: string]: Accessory }>({});
+
+  // Inline validation states for new product
+  const newProdName = (newProduct.en || newProduct.ar || '').trim();
+  const newProdNameInvalid = newProdName.length === 0;
+  const newProdPriceInvalid = !(Number(newProduct.basePricePerM2) > 0);
+  const newProdDimsInvalid = !(!!newProduct.dimensions?.width || !!newProduct.dimensions?.height || !!newProduct.dimensions?.length);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -77,7 +85,7 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
         if (!cancelled) setProducts(built);
       } catch {
         if (!cancelled) toastError(isAr ? 'تعذر تحميل الإعدادات' : 'Failed to load options', isAr);
-      } finally { if (!cancelled) setLoading(false); }
+      } finally { if (!cancelled) { setLoading(false); hideFirstOverlay(); } }
     })();
     return () => { cancelled = true; };
   }, [isAr]);
@@ -139,9 +147,11 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
     });
   };
 
-  const removeProduct = (idx: number) => setProducts(prev => prev.filter((_,i)=>i!==idx));
+  const removeProduct = (idx: number) => {
+    applyAndSave(prev => prev.filter((_, i) => i !== idx));
+  };
 
-  const addProduct = () => {
+  const addProduct = async () => {
     // Auto-generate ID from AR/EN name
     const baseName = newProduct.en?.trim() || newProduct.ar?.trim() || '';
     if (!baseName) { toastError(isAr? 'أدخل اسم المنتج':'Enter product name', isAr); return; }
@@ -154,7 +164,12 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
     let i = 1;
     let unique = id;
     while (existing.has(unique)) { unique = `${id}-${i++}`; }
-    setProducts(prev => [...prev, { ...newProduct, id: unique, subtypes: [...npSubtypes], materials: [...npMaterials], colors: [...npColors], accessories: [...npAccessories] }]);
+    const nextList = [
+      ...products,
+      { ...newProduct, id: unique, subtypes: [...npSubtypes], materials: [...npMaterials], colors: [...npColors], accessories: [...npAccessories] },
+    ];
+    await saveAllWith(nextList);
+    // Clear drafts after persistence attempt; toasts are handled inside saveAllWith
     setNewProduct({ id: '', en: '', ar: '', dimensions: { width: true, height: true }, basePricePerM2: 0, subtypes: [], materials: [], colors: [], accessories: [] });
     setNpSubtypes([]); setNpMaterials([]); setNpColors([]); setNpAccessories([]);
     setNpDraftSubtype({ id: '', ar: '', en: '' }); setNpDraftMaterial({ id: '', ar: '', en: '' }); setNpDraftColor({ id: '', ar: '', en: '' }); setNpDraftAccessory({ id: '', price: 0 });
@@ -207,21 +222,33 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                 <label className="text-xs block mb-1">{isAr? 'الاسم (عربي)':'Name (Arabic)'}
                 </label>
                 <Input value={newProduct.ar} onChange={(e)=>setNewProduct(p=>({...p, ar: e.target.value}))} placeholder={isAr? 'باب':'باب'} />
+                {newProdNameInvalid && (
+                  <div className="text-[11px] text-red-600 mt-1">{isAr ? 'الاسم مطلوب (عربي أو إنجليزي)' : 'Name is required (Arabic or English)'}</div>
+                )}
               </div>
               <div>
                 <label className="text-xs block mb-1">{isAr? 'الاسم (إنجليزي)':'Name (English)'}
                 </label>
                 <Input value={newProduct.en} onChange={(e)=>setNewProduct(p=>({...p, en: e.target.value}))} placeholder="Door" />
+                {newProdNameInvalid && (
+                  <div className="text-[11px] text-red-600 mt-1">{isAr ? 'الاسم مطلوب (عربي أو إنجليزي)' : 'Name is required (Arabic or English)'}</div>
+                )}
               </div>
               <div>
                 <label className="text-xs block mb-1">{isAr? 'السعر للمتر المربع':'Base price per m²'}</label>
                 <Input type="number" inputMode="decimal" value={Number(newProduct.basePricePerM2||0)} onChange={(e)=>setNewProduct(p=>({...p, basePricePerM2: Number(e.target.value||0)}))} />
+                {newProdPriceInvalid && (
+                  <div className="text-[11px] text-red-600 mt-1">{isAr ? 'أدخل سعرًا صحيحًا أكبر من صفر' : 'Enter a valid price greater than zero'}</div>
+                )}
               </div>
               <div className="col-span-1 md:col-span-2 lg:col-span-4 grid grid-cols-3 gap-3">
                 <label className="text-xs col-span-3">{isAr? 'الأبعاد المطلوبة':'Required dimensions'}</label>
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!newProduct.dimensions?.width} onChange={(e)=>setNewProduct(p=>({...p, dimensions:{ ...(p.dimensions||{}), width: e.target.checked }}))} /> <span>{isAr ? 'العرض' : 'Width'}</span></div>
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!newProduct.dimensions?.height} onChange={(e)=>setNewProduct(p=>({...p, dimensions:{ ...(p.dimensions||{}), height: e.target.checked }}))} /> <span>{isAr ? 'الارتفاع' : 'Height'}</span></div>
                 <div className="flex items-center gap-2"><input type="checkbox" checked={!!newProduct.dimensions?.length} onChange={(e)=>setNewProduct(p=>({...p, dimensions:{ ...(p.dimensions||{}), length: e.target.checked }}))} /> <span>{isAr ? 'الطول' : 'Length'}</span></div>
+                {newProdDimsInvalid && (
+                  <div className="col-span-3 text-[11px] text-red-600">{isAr ? 'اختر بُعدًا واحدًا على الأقل (عرض/ارتفاع/طول)' : 'Select at least one dimension (width/height/length)'}</div>
+                )}
               </div>
             </div>
 
@@ -240,7 +267,7 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                 <Input placeholder={isAr?'عربي':'Arabic'} value={npDraftSubtype.ar || ''} onChange={(e)=> setNpDraftSubtype(prev => ({ ...prev, ar: e.target.value }))} />
                 <Input placeholder={isAr?'إنجليزي':'English'} value={npDraftSubtype.en || ''} onChange={(e)=> setNpDraftSubtype(prev => ({ ...prev, en: e.target.value }))} />
                 <div className="col-span-1 md:col-span-1 flex items-end">
-                  <Button size="sm" variant="outline" onClick={()=>{
+                  <Button size="sm" variant="outline" disabled={!((npDraftSubtype.ar||'').trim()||(npDraftSubtype.en||'').trim())} onClick={()=>{
                     const name = (npDraftSubtype.ar || npDraftSubtype.en || '').trim();
                     if (!name) return;
                     const id = slugify(npDraftSubtype.en || npDraftSubtype.ar || '');
@@ -249,6 +276,9 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                   }}>{isAr?'إضافة نوع':'Add subtype'}</Button>
                 </div>
               </div>
+              {!( (npDraftSubtype.ar||'').trim() || (npDraftSubtype.en||'').trim() ) && (
+                <div className="text-[11px] text-red-600">{isAr ? 'أدخل اسم النوع بالعربي أو الإنجليزي' : 'Enter subtype name in Arabic or English'}</div>
+              )}
             </div>
 
             {/* New product materials */}
@@ -266,7 +296,7 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                 <Input placeholder={isAr?'عربي':'Arabic'} value={npDraftMaterial.ar || ''} onChange={(e)=> setNpDraftMaterial(prev => ({ ...prev, ar: e.target.value }))} />
                 <Input placeholder={isAr?'إنجليزي':'English'} value={npDraftMaterial.en || ''} onChange={(e)=> setNpDraftMaterial(prev => ({ ...prev, en: e.target.value }))} />
                 <div className="col-span-1 md:col-span-1 flex items-end">
-                  <Button size="sm" variant="outline" onClick={()=>{
+                  <Button size="sm" variant="outline" disabled={!((npDraftMaterial.ar||'').trim()||(npDraftMaterial.en||'').trim())} onClick={()=>{
                     const name = (npDraftMaterial.ar || npDraftMaterial.en || '').trim();
                     if (!name) return;
                     const id = slugify(npDraftMaterial.en || npDraftMaterial.ar || '');
@@ -275,6 +305,9 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                   }}>{isAr?'إضافة خامة':'Add material'}</Button>
                 </div>
               </div>
+              {!( (npDraftMaterial.ar||'').trim() || (npDraftMaterial.en||'').trim() ) && (
+                <div className="text-[11px] text-red-600">{isAr ? 'أدخل اسم الخامة بالعربي أو الإنجليزي' : 'Enter material name in Arabic or English'}</div>
+              )}
             </div>
 
             {/* New product colors */}
@@ -292,7 +325,7 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                 <Input placeholder={isAr?'عربي':'Arabic'} value={npDraftColor.ar || ''} onChange={(e)=> setNpDraftColor(prev => ({ ...prev, ar: e.target.value }))} />
                 <Input placeholder={isAr?'إنجليزي':'English'} value={npDraftColor.en || ''} onChange={(e)=> setNpDraftColor(prev => ({ ...prev, en: e.target.value }))} />
                 <div className="col-span-1 md:col-span-1 flex items-end">
-                  <Button size="sm" variant="outline" onClick={()=>{
+                  <Button size="sm" variant="outline" disabled={!((npDraftColor.ar||'').trim()||(npDraftColor.en||'').trim())} onClick={()=>{
                     const name = (npDraftColor.ar || npDraftColor.en || '').trim();
                     if (!name) return;
                     // duplicate check (by AR or EN)
@@ -304,6 +337,9 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                   }}>{isAr?'إضافة لون':'Add color'}</Button>
                 </div>
               </div>
+              {!( (npDraftColor.ar||'').trim() || (npDraftColor.en||'').trim() ) && (
+                <div className="text-[11px] text-red-600">{isAr ? 'أدخل اسم اللون بالعربي أو الإنجليزي' : 'Enter color name in Arabic or English'}</div>
+              )}
             </div>
 
             {/* New product accessories */}
@@ -322,7 +358,7 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                 <Input placeholder={isAr?'إنجليزي':'English'} value={npDraftAccessory.en || ''} onChange={(e)=> setNpDraftAccessory(prev => ({ ...prev, en: e.target.value }))} />
                 <Input placeholder={isAr?'السعر':'Price'} type="number" inputMode="decimal" value={Number(npDraftAccessory.price || 0)} onChange={(e)=> setNpDraftAccessory(prev => ({ ...prev, price: Number(e.target.value || 0) }))} />
                 <div className="col-span-1 md:col-span-3">
-                  <Button size="sm" variant="outline" onClick={()=>{
+                  <Button size="sm" variant="outline" disabled={!((npDraftAccessory.ar||npDraftAccessory.en||'').trim())} onClick={()=>{
                     const name = (npDraftAccessory.ar || npDraftAccessory.en || '').trim();
                     if (!name) return;
                     // duplicate check by AR/EN
@@ -334,6 +370,9 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
                   }}>{isAr?'إضافة ملحق':'Add accessory'}</Button>
                 </div>
               </div>
+              {!( (npDraftAccessory.ar||'').trim() || (npDraftAccessory.en||'').trim() ) && (
+                <div className="text-[11px] text-red-600">{isAr ? 'أدخل اسم الملحق بالعربي أو الإنجليزي' : 'Enter accessory name in Arabic or English'}</div>
+              )}
             </div>
 
             <div>
@@ -508,7 +547,8 @@ export default function AdminProjectOptions({ setCurrentPage, ...rest }: Partial
           <Button onClick={saveAll} disabled={loading}>{isAr ? 'حفظ كل الإعدادات' : 'Save All'}</Button>
           <Button variant="outline" onClick={()=> setCurrentPage && setCurrentPage('admin-dashboard')}>{isAr ? 'رجوع' : 'Back'}</Button>
         </div>
+
       </div>
     </div>
-  );
+  )
 }

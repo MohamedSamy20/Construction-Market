@@ -13,12 +13,18 @@ import { Separator } from '../../components/ui/separator';
 import { Package, Layers, Ruler, Boxes, ClipboardList, Calendar, Send, ArrowRight, Info } from 'lucide-react';
 import { getProjectById, getMyBids, createBid } from '@/services/projects';
 import { getProjectCatalog, type ProjectCatalog } from '@/services/options';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 interface Props extends Partial<RouteContext> {}
 
 export default function VendorProjectDetails({ setCurrentPage, ...context }: Props) {
   const { locale } = useTranslation();
   const currency = locale === 'ar' ? 'ر.س' : 'SAR';
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale === 'ar' ? 'جاري تحميل تفاصيل المشروع' : 'Loading project details',
+    locale === 'ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [project, setProject] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +110,7 @@ export default function VendorProjectDetails({ setCurrentPage, ...context }: Pro
         } catch {}
       } finally {
         setLoading(false);
+        try { hideFirstOverlay(); } catch {}
       }
     })();
   }, []);

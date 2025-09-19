@@ -14,12 +14,18 @@ import { getOpenProjects, getMyBids, createBid } from "@/services/projects";
 import { getCommissionRates } from "@/services/commissions";
 import { getToken, getProfile } from "@/services/auth";
 import type { RouteContext } from "../../components/routerTypes";
+import { useFirstLoadOverlay } from "../../hooks/useFirstLoadOverlay";
 
 interface Props extends Partial<RouteContext> {}
 
 export default function VendorProjects({ setCurrentPage, ...context }: Props) {
   const { locale } = useTranslation();
   const currency = locale === "ar" ? "ر.س" : "SAR";
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale === 'ar' ? 'جاري تحميل المشاريع' : 'Loading projects',
+    locale === 'ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [userProjects, setUserProjects] = useState<any[]>([]);
   const [myBids, setMyBids] = useState<any[]>([]);
@@ -89,6 +95,7 @@ export default function VendorProjects({ setCurrentPage, ...context }: Props) {
           setUserProjects(normalized);
         } else setUserProjects([]);
       } catch { setUserProjects([]); }
+      finally { try { hideFirstOverlay(); } catch {} }
     })();
   }, []);
 

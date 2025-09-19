@@ -45,6 +45,14 @@ export default function TechnicianChat({ setCurrentPage, ...context }: Partial<R
     })();
   }, [conversationId]);
 
+  // Fallback vendor name from context if server didn't provide it
+  useEffect(() => {
+    if (!vendorName && (context as any)?.user?.role && String((context as any)?.user?.role).toLowerCase()==='vendor') {
+      const nm = String((context as any)?.user?.name || '').trim();
+      if (nm) setVendorName(nm);
+    }
+  }, [vendorName, (context as any)?.user?.name, (context as any)?.user?.role]);
+
   useEffect(() => {
     let timer: any;
     (async () => {
@@ -106,7 +114,7 @@ export default function TechnicianChat({ setCurrentPage, ...context }: Partial<R
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-base">
               <span>{isAr ? 'دردشة مع التاجر' : 'Chat with Vendor'}</span>
-              <div className="text-xs text-muted-foreground">{isAr ? `التاجر: ${vendorName || 'غير معرّف'} • الخدمة: #${serviceId}` : `Vendor: ${vendorName || 'Unknown'} • Service: #${serviceId}`}</div>
+              <div className="text-xs text-muted-foreground">{isAr ? `التاجر: ${vendorName || (context as any)?.user?.name || 'غير معرّف'}` : `Vendor: ${vendorName || (context as any)?.user?.name || 'Unknown'}`}</div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -121,11 +129,12 @@ export default function TechnicianChat({ setCurrentPage, ...context }: Partial<R
                     const isMine = m.from === techId;
                     const senderName = isMine ? (isAr ? 'أنا' : 'Me') : (vendorName || (isAr ? 'التاجر' : 'Vendor'));
                     return (
-                      <div key={m.id ?? i} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                      <div key={m.id ?? i} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                        <div className={`text-[11px] mb-1 ${isMine ? 'text-right' : 'text-left'} ${isMine ? 'text-blue-700' : 'text-muted-foreground'}`}>{senderName}</div>
                         <div className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${isMine ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
                           <div>{m.text}</div>
                           <div className={`text-[10px] opacity-70 mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
-                            {senderName} • {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
+                            {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
                           </div>
                         </div>
                       </div>

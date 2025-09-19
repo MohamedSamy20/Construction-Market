@@ -14,9 +14,10 @@ import Footer from '../../components/Footer';
 import { useTranslation } from '../../hooks/useTranslation';
 import { toastError, toastSuccess } from '../../utils/alerts';
 import { getMyProducts } from '@/services/products';
-import { listMyRentals, createRental, type CreateRentalInput, updateRental, deleteRental, listRentalMessages, replyRentalMessage } from '@/services/rentals';
+import { listMyRentals, createRental, type CreateRentalInput, updateRental, deleteRental, listRentalMessages, replyRentalMessage, getRentalById } from '@/services/rentals';
 import { api } from '@/lib/api';
 import { getCommissionRates } from '@/services/commissions';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 // This page mirrors VendorProducts but for rentals. It reuses ProductForm and ProductItem for speed.
 
@@ -24,6 +25,11 @@ type VendorRentalsProps = Partial<RouteContext>;
 
 export default function VendorRentals({ setCurrentPage, ...context }: VendorRentalsProps) {
   const { locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale==='ar' ? 'جاري تحميل التأجير' : 'Loading rentals',
+    locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
   const [rentals, setRentals] = useState<any[]>([]);
   const [filteredRentals, setFilteredRentals] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,9 +37,10 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const [selectedStatus, setSelectedStatus] = useState('all');
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editTarget, setEditTarget] = useState<any|null>(null);
   const [saving, setSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<any|null>(null);
   // Dates are set by technician, not vendor
   const [editRate, setEditRate] = useState('');
   const [editDeposit, setEditDeposit] = useState('');
@@ -90,7 +97,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         }
       } catch {
         if (!cancelled) { setRentals([]); toastError(locale==='ar'?'فشل تحميل التأجير':'Failed to load rentals', locale==='ar'); }
-      }
+      } finally { if (!cancelled) { try { hideFirstOverlay(); } catch {} } }
     })();
     return () => { cancelled = true; };
   }, [locale]);
@@ -184,7 +191,8 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const openMessages = async (r:any) => {
     setMsgTarget(r); setMsgOpen(true); setMessages([]); setMsgReply(''); setMsgLoading(true);
     try {
-      const res = await listRentalMessages(String(r.id));
+      const rid = String(r?.id ?? r?._id ?? r?.Id ?? '');
+      const res = await listRentalMessages(rid);
       if (res.ok && Array.isArray(res.data)) setMessages(res.data as any[]);
     } finally { setMsgLoading(false); }
   };
@@ -193,10 +201,11 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     if (!msgTarget || !msgReply.trim()) return;
     setMsgLoading(true);
     try {
-      const res = await replyRentalMessage(String(msgTarget.id), msgReply.trim());
+      const rid = String((msgTarget as any)?.id ?? (msgTarget as any)?._id ?? (msgTarget as any)?.Id ?? '');
+      const res = await replyRentalMessage(rid, msgReply.trim());
       if (res.ok) {
         setMsgReply('');
-        const r2 = await listRentalMessages(String(msgTarget.id));
+        const r2 = await listRentalMessages(rid);
         if (r2.ok && Array.isArray(r2.data)) setMessages(r2.data as any[]);
         // refresh counts
         const fresh = await listMyRentals();
@@ -205,24 +214,77 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
     } finally { setMsgLoading(false); }
   };
 
-  const openEdit = (r:any) => {
+  const openEdit = async (r:any) => {
+    // Use unified add dialog with prefilled values
+    setEditMode(true);
     setEditTarget(r);
-    // Dates are not editable by vendor
-    setEditRate(String(r.dailyRate ?? ''));
-    setEditDeposit(String(r.securityDeposit ?? ''));
-    setEditCurrency(String(r.currency || 'SAR'));
-    setEditSpecial(String(r.specialInstructions || ''));
-    setEditUsage(String(r.usageNotes || ''));
-    setEditMachine(String(r.productName || ''));
-    setEditProductId(r.productId ? String(r.productId) : '');
-    setEditOpen(true);
+    setDialogOpen(true);
+    // Start with what we have
+    const rid = String(r?.id ?? r?._id ?? r?.Id ?? '');
+    let details: any = r;
+    if (rid) {
+      try {
+        const full = await getRentalById(rid);
+        if (full.ok && full.data) details = full.data as any;
+      } catch {}
+    }
+    // Case-insensitive search helpers for robustness against API field variations
+    const pickVal = (obj:any, candidates:string[]) => {
+      try {
+        const map: Record<string, any> = {};
+        Object.keys(obj||{}).forEach(k => { map[k.toLowerCase()] = (obj as any)[k]; });
+        for (const c of candidates) {
+          const v = map[c.toLowerCase()];
+          if (v !== undefined && v !== null) return v;
+        }
+      } catch {}
+      return undefined;
+    };
+    const depRaw =
+      details.securityDeposit ?? details.securityDepositAmount ?? details.deposit ?? details.depositAmount ?? details.secDeposit ??
+      r.securityDeposit ?? r.securityDepositAmount ?? r.deposit ?? r.depositAmount ?? r.secDeposit ??
+      pickVal(details, ['securityDeposit','deposit','securityDepositAmount','depositAmount','secDeposit']) ??
+      pickVal(r, ['securityDeposit','deposit','securityDepositAmount','depositAmount','secDeposit']);
+    const notesRaw =
+      details.usageNotes ?? details.rentalNotes ?? details.notes ??
+      r.usageNotes ?? r.rentalNotes ?? r.notes ??
+      pickVal(details, ['usageNotes','notes','rentalNotes']) ??
+      pickVal(r, ['usageNotes','notes','rentalNotes']);
+    const specRaw =
+      details.specialInstructions ?? details.instructions ?? details.special ??
+      r.specialInstructions ?? r.instructions ?? r.special ??
+      pickVal(details, ['specialInstructions','instructions','special']) ??
+      pickVal(r, ['specialInstructions','instructions','special']);
+    const dep = (depRaw !== undefined && depRaw !== null) ? String(depRaw) : '';
+    const notes = (notesRaw !== undefined && notesRaw !== null) ? String(notesRaw) : '';
+    const spec = (specRaw !== undefined && specRaw !== null) ? String(specRaw) : '';
+    try { console.debug('Edit rental details', { dep, notes, spec, details }); } catch {}
+    setMachineName(String(details.productName || r.productName || ''));
+    setProductId(details.productId ? String(details.productId) : (r.productId ? String(r.productId) : ''));
+    setCustomerId(String(details.customerId || r.customerId || ''));
+    setDailyRate(String((details.dailyRate ?? r.dailyRate ?? '') as any));
+    setSecurityDeposit(dep);
+    setCurrency(String(details.currency || r.currency || 'SAR'));
+    // If usage notes are empty but special instructions were used to store text in earlier versions, show them in notes too
+    setUsageNotes(notes || spec);
+    setSpecialInstructions(spec);
+    // Preload existing image into thumbnails
+    const img = String(details.imageUrl || r.imageUrl || '');
+    setImages(img ? [img] : []);
+    setImageFiles([]);
   };
 
   const submitEdit = async () => {
     if (!editTarget) return;
     try {
       setSaving(true);
-      const res = await updateRental(String(editTarget.id), {
+      const rid = String((editTarget as any)?.id ?? (editTarget as any)?._id ?? (editTarget as any)?.Id ?? (editTarget as any)?.ID ?? '');
+      if (!rid) {
+        toastError(locale==='ar'? 'تعذر تحديد العقد لتحديثه.' : 'Unable to determine rental id to update.', locale==='ar');
+        setSaving(false);
+        return;
+      }
+      const res = await updateRental(rid, {
         dailyRate: Number(editRate||0),
         securityDeposit: editDeposit ? Number(editDeposit) : 0,
         currency: editCurrency,
@@ -244,7 +306,8 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
   const removeRental = async (r:any) => {
     try {
       if (!confirm(locale==='ar'? 'هل تريد حذف هذا العقد؟' : 'Delete this rental?')) return;
-      const res = await deleteRental(String(r.id));
+      const rid = String(r?.id ?? r?._id ?? r?.Id ?? '');
+      const res = await deleteRental(rid);
       if (res.ok) {
         toastSuccess(locale==='ar'? 'تم حذف العقد' : 'Rental deleted', locale==='ar');
         const fresh = await listMyRentals();
@@ -262,7 +325,12 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
       // If no matched product, allow creation without linking a product (backend supports optional productId)
       const effectiveProductId = productId || (myProducts?.[0]?.id ? String(myProducts[0].id) : '');
       if (!dailyRate || !securityDeposit) {
-        toastError(locale==='ar'? 'يرجى تعبئة الحقول المطلوبة' : 'Please fill required fields', locale==='ar');
+        toastError(
+          locale==='ar'
+            ? 'يرجى تعبئة الحقول المطلوبة (سعر اليوم، التأمين)'
+            : 'Please fill required fields (daily rate, deposit)',
+          locale==='ar'
+        );
         return;
       }
       setSaving(true);
@@ -277,10 +345,30 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         }
       } catch {}
 
+      const todayIso = new Date().toISOString();
+      // Determine customer id automatically if not provided
+      let effectiveCustomerId = (customerId || '').trim();
+      if (!effectiveCustomerId) {
+        try { effectiveCustomerId = String((context as any)?.user?.id || ''); } catch {}
+        if (!effectiveCustomerId) {
+          try {
+            const raw = localStorage.getItem('mock_current_user');
+            if (raw) effectiveCustomerId = String((JSON.parse(raw)||{}).id || '');
+          } catch {}
+        }
+      }
+      if (!effectiveCustomerId) {
+        toastError(locale==='ar'? 'تعذر تحديد هوية العميل. يرجى تسجيل الدخول أولاً.' : 'Could not determine customer identity. Please log in first.', locale==='ar');
+        setSaving(false);
+        return;
+      }
       const payload: any = {
         productId: effectiveProductId ? String(effectiveProductId) : undefined,
         productName: machineName ? machineName.trim() : undefined,
-        customerId: (customerId || '').trim(),
+        customerId: effectiveCustomerId,
+        // Backend requires dates: provide same-day placeholder; technician will adjust later
+        startDate: todayIso,
+        endDate: todayIso,
         dailyRate: Number(dailyRate),
         currency,
         securityDeposit: Number(securityDeposit),
@@ -292,15 +380,50 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
         // Attach image url if uploaded
         ...(uploadedUrl ? { imageUrl: uploadedUrl } as any : {}),
       };
-      const res = await createRental(payload);
+      // If editing, call updateRental instead
+      let res: any;
+      if (editMode && editTarget) {
+        const rid = String((editTarget as any)?.id ?? (editTarget as any)?._id ?? '');
+        if (!rid) {
+          toastError(locale==='ar'? 'تعذر تحديد العقد لتحديثه.' : 'Unable to determine rental id to update.', locale==='ar');
+          setSaving(false);
+          return;
+        }
+        res = await updateRental(rid, {
+          dailyRate: Number(dailyRate),
+          securityDeposit: Number(securityDeposit),
+          currency,
+          specialInstructions,
+          usageNotes,
+          productId: effectiveProductId ? String(effectiveProductId) : undefined,
+        } as any);
+        // If a new image was uploaded, attempt to update imageUrl too
+        if (res.ok && uploadedUrl) {
+          try { await updateRental(rid, { imageUrl: uploadedUrl } as any); } catch {}
+        }
+      } else {
+        res = await createRental(payload);
+      }
+
       if (res.ok) {
-        toastSuccess(locale==='ar'? 'تم إنشاء عقد التأجير' : 'Rental created', locale==='ar');
+        toastSuccess(
+          editMode ? (locale==='ar'? 'تم تحديث عقد التأجير' : 'Rental updated') : (locale==='ar'? 'تم إنشاء عقد التأجير' : 'Rental created'),
+          locale==='ar'
+        );
         setDialogOpen(false);
+        setEditMode(false); setEditTarget(null);
         resetForm();
         const fresh = await listMyRentals();
         setRentals(Array.isArray(fresh.data) ? (fresh.data as any[]) : []);
       } else {
-        toastError(locale==='ar'? 'فشل إنشاء عقد التأجير' : 'Failed to create rental', locale==='ar');
+        const status = (res as any)?.status;
+        const msg = (res as any)?.error?.message || (res as any)?.data?.message || '';
+        toastError(
+          locale==='ar'
+            ? `${editMode? 'فشل تحديث عقد التأجير' : 'فشل إنشاء عقد التأجير'}${status? ` (رمز ${status})`: ''}${msg? ` • ${msg}`: ''}`
+            : `${editMode? 'Failed to update rental' : 'Failed to create rental'}${status? ` (status ${status})`: ''}${msg? ` • ${msg}`: ''}`,
+          locale==='ar'
+        );
       }
     } finally {
       setSaving(false);
@@ -327,7 +450,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>{locale==='ar'? 'إضافة عقد تأجير' : 'Create Rental'}</DialogTitle>
+                  <DialogTitle>{editMode ? (locale==='ar'? 'تعديل عقد التأجير' : 'Edit Rental') : (locale==='ar'? 'إضافة عقد تأجير' : 'Create Rental')}</DialogTitle>
                 </DialogHeader>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
@@ -349,6 +472,16 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                       </div>
                     )}
                   </div>
+                  {/* Customer ID (optional; auto-filled) */}
+                  <div className="space-y-2 hidden">
+                    <Label>{locale==='ar'? 'معرّف العميل' : 'Customer ID'}</Label>
+                    <Input
+                      value={customerId}
+                      onChange={(e)=> setCustomerId(e.target.value)}
+                      placeholder={locale==='ar'? 'أدخل رقم/معرّف العميل' : 'Enter customer id'}
+                    />
+                  </div>
+
                   {/* Optional images upload for the contract */}
                   <div className="space-y-2 md:col-span-2">
                     <Label>{locale==='ar'? 'صور العقد (اختياري)' : 'Contract images (optional)'}</Label>
@@ -417,7 +550,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                     {locale==='ar'? 'إلغاء' : 'Cancel'}
                   </Button>
                   <Button onClick={submitRental} disabled={saving}>
-                    {saving ? (locale==='ar'? 'جارٍ الحفظ...' : 'Saving...') : (locale==='ar'? 'حفظ' : 'Save')}
+                    {saving ? (locale==='ar'? 'جارٍ الحفظ...' : 'Saving...') : (editMode ? (locale==='ar'? 'تحديث' : 'Update') : (locale==='ar'? 'حفظ' : 'Save'))}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -524,58 +657,7 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
           </CardContent>
         </Card>
 
-        {/* Edit Dialog */}
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{locale==='ar'? 'تعديل عقد التأجير' : 'Edit Rental'}</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Label>{locale==='ar'? 'الآلة' : 'Machine'}</Label>
-                <Input
-                  value={editMachine}
-                  onChange={(e)=>{
-                    const val = e.target.value; setEditMachine(val);
-                    const match = (myProducts || []).find((p:any)=> String(p.name || '').toLowerCase().includes(val.toLowerCase()));
-                    setEditProductId(match ? String(match.id) : '');
-                  }}
-                  placeholder={locale==='ar'? 'اكتب اسم الآلة' : 'Type machine name'}
-                />
-                {editProductId && (
-                  <div className="text-xs text-green-600 mt-1">
-                    {locale==='ar'? `تم التعرف على المنتج (ID ${editProductId}) تلقائياً` : `Matched product (ID ${editProductId})`}
-                  </div>
-                )}
-              </div>
-              {/* Dates removed from edit as well */}
-              <div>
-                <Label>{locale==='ar'? 'سعر اليوم' : 'Daily rate'}</Label>
-                <Input type="number" inputMode="decimal" value={editRate} onChange={(e)=> setEditRate(e.target.value)} />
-              </div>
-              <div>
-                <Label>{locale==='ar'? 'التأمين' : 'Deposit'}</Label>
-                <Input type="number" inputMode="decimal" value={editDeposit} onChange={(e)=> setEditDeposit(e.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>{locale==='ar'? 'العملة' : 'Currency'}</Label>
-                <Input value={editCurrency} onChange={(e)=> setEditCurrency(e.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>{locale==='ar'? 'تعليمات خاصة' : 'Special instructions'}</Label>
-                <Textarea value={editSpecial} onChange={(e)=> setEditSpecial(e.target.value)} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>{locale==='ar'? 'ملاحظات الاستخدام' : 'Usage notes'}</Label>
-                <Textarea value={editUsage} onChange={(e)=> setEditUsage(e.target.value)} />
-              </div>
-            </div>
-            <DialogFooter className="mt-4">
-              <Button variant="ghost" onClick={()=> setEditOpen(false)}>{locale==='ar'? 'إلغاء' : 'Cancel'}</Button>
-              <Button onClick={submitEdit} disabled={saving}>{saving ? (locale==='ar'? 'جارٍ الحفظ...' : 'Saving...') : (locale==='ar'? 'حفظ' : 'Save')}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Edit Dialog removed in favor of unified form */}
 
         {/* Messages Dialog */}
         <Dialog open={msgOpen} onOpenChange={setMsgOpen}>
@@ -590,15 +672,17 @@ export default function VendorRentals({ setCurrentPage, ...context }: VendorRent
                 <div className="text-sm text-muted-foreground">{locale==='ar'? 'لا توجد رسائل بعد' : 'No messages yet'}</div>
               ) : (
                 <div className="space-y-3">
-                  {messages.map((m:any, idx:number)=> (
-                    <div key={idx} className={`rounded p-2 ${m.fromMerchant? 'bg-blue-50 text-blue-900' : 'bg-white'}`}>
+                  {messages.map((m:any, idx:number)=> {
+                    const key = String(m.id ?? m._id ?? m.messageId ?? m.at ?? idx);
+                    return (
+                    <div key={key} className={`rounded p-2 ${m.fromMerchant? 'bg-blue-50 text-blue-900' : 'bg-white'}`}>
                       <div className="text-xs text-muted-foreground flex justify-between">
                         <span>{m.fromMerchant ? (locale==='ar'? 'التاجر' : 'Merchant') : (m.name || 'Customer')}</span>
                         <span>{String(m.at).replace('T',' ').slice(0,16)}</span>
                       </div>
                       <div className="text-sm whitespace-pre-wrap">{m.message}</div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </div>

@@ -10,6 +10,7 @@ import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
 import { getProjects, type ProjectDto } from '@/services/projects';
 import { Eye, RefreshCw } from 'lucide-react';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 const STATUS_OPTIONS = [
   { id: 'all', ar: 'الكل', en: 'All' },
@@ -50,6 +51,7 @@ function statusBadgeVariant(status: string): 'default' | 'secondary' | 'outline'
 export default function AdminAllProjects({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(context, isAr ? 'جاري تحميل كل المشاريع' : 'Loading all projects', isAr ? 'يرجى الانتظار' : 'Please wait');
 
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -77,7 +79,7 @@ export default function AdminAllProjects({ setCurrentPage, ...context }: Partial
     }
   }, [query, isAr]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => { (async ()=> { await load(); hideFirstOverlay(); })(); }, [load]);
 
   const filtered = React.useMemo(() => {
     const s = status;

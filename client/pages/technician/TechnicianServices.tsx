@@ -43,12 +43,15 @@ export default function TechnicianServices({ setCurrentPage, ...context }: Props
     let cancelled = false;
     setHydrated(true);
     (async () => {
+      (context as any)?.showLoading?.(isAr ? 'جاري تحميل الخدمات...' : 'Loading services...');
       try {
         const { ok, data } = await listPublicServices();
         if (!cancelled && ok && Array.isArray(data)) setServices(data as any[]);
         else if (!cancelled) setServices([]);
       } catch { if (!cancelled) setServices([]); }
-    })();
+    })().finally(() => {
+      (context as any)?.hideLoading?.();
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -68,13 +71,16 @@ export default function TechnicianServices({ setCurrentPage, ...context }: Props
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      (context as any)?.showLoading?.(isAr ? 'جاري تحميل عروضك...' : 'Loading your offers...');
       try {
         if (!technicianId) { setMyOffers([]); return; }
         const { ok, data } = await getTechnicianOffers(String(technicianId));
         if (!cancelled && ok && Array.isArray(data)) setMyOffers(data as any[]);
         else if (!cancelled) setMyOffers([]);
       } catch { if (!cancelled) setMyOffers([]); }
-    })();
+    })().finally(() => {
+      (context as any)?.hideLoading?.();
+    });
     return () => { cancelled = true; };
   }, [technicianId]);
 

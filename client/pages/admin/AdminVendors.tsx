@@ -14,6 +14,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { getPendingMerchants, getUsers as adminGetUsers, approveMerchant, suspendMerchant } from '@/services/admin';
 import { successAlert, warningAlert } from '../../utils/alerts';
 import { getAdminUserById, type AdminUserDetails } from '@/services/adminUsers';
+
 import { api } from '@/lib/api';
 
 // Normalize media URLs: if relative (e.g., /uploads/xyz.jpg), prefix with API base
@@ -80,7 +81,8 @@ type VendorRow = {
 };
 
 export default function AdminVendors({ setCurrentPage, ...context }: Partial<RouteContext>) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(context, locale==='ar' ? 'جاري تحميل البائعين' : 'Loading vendors', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const [rows, setRows] = useState<VendorRow[]>([]);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<'all' | VendorRow['status']>('all');
@@ -92,7 +94,7 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
   const [profileImgError, setProfileImgError] = useState(false);
   const [docImgError, setDocImgError] = useState(false);
 
-  useEffect(() => { void loadVendors(); void loadPending(); }, []);
+  useEffect(() => { (async () => { await Promise.all([loadVendors(), loadPending()]); hideFirstOverlay(); })(); }, []);
   const loadVendors = async () => {
     try {
       const res = await adminGetUsers({ role: 'Merchant' });

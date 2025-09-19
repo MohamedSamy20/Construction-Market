@@ -12,6 +12,7 @@ import Footer from '../../components/Footer';
 import { getStatusColor, formatCurrency, formatDate } from '../../utils/vendorHelpers';
 import { listVendorOrders as apiListVendorOrders, updateOrderStatus as apiUpdateOrderStatus } from '@/services/orders';
 import { useTranslation } from '../../hooks/useTranslation';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 type VendorOrdersProps = Partial<RouteContext>;
 
@@ -27,6 +28,7 @@ type UIOrder = {
 };
 
 export default function VendorOrders({ setCurrentPage, ...context }: VendorOrdersProps) {
+
   const [mounted, setMounted] = useState(false);
   const [orders, setOrders] = useState<UIOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<UIOrder[]>([]);
@@ -34,6 +36,7 @@ export default function VendorOrders({ setCurrentPage, ...context }: VendorOrder
   const [selectedStatus, setSelectedStatus] = useState('all');
   const { t, locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(context, isAr ? 'جاري تحميل الطلبات' : 'Loading orders', isAr ? 'يرجى الانتظار' : 'Please wait');
 
   // Safe navigation fallback to avoid undefined setter and preserve SPA context
   const safeSetCurrentPage = setCurrentPage ?? (() => {});
@@ -87,6 +90,7 @@ export default function VendorOrders({ setCurrentPage, ...context }: VendorOrder
     (async () => {
       try {
         const { ok, data } = await apiListVendorOrders({ vendorId: 'me' });
+
         if (ok && Array.isArray(data)) {
           const mapped: UIOrder[] = data.map((o: any) => ({
             id: String(o.id),
@@ -102,6 +106,7 @@ export default function VendorOrders({ setCurrentPage, ...context }: VendorOrder
           setFilteredOrders(mapped);
         }
       } catch {}
+      finally { hideFirstOverlay(); }
     })();
   }, []);
 

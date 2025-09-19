@@ -11,16 +11,19 @@ import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getPerformanceSummary, getPerformanceSeries, getCustomersSummary, getCustomersSeries, getTopProducts, getCategorySales, type PerformanceSummary, type PerformanceSeriesPoint, type CustomersSummary, type CustomersSeriesPoint, type TopProduct, type CategorySales } from '@/services/vendorAnalytics';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 type VendorAnalyticsProps = Partial<RouteContext>;
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
 export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAnalyticsProps) {
+
   const [mounted, setMounted] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const { t, locale } = useTranslation();
   const safeSetCurrentPage = setCurrentPage ?? (() => {});
+  const hideFirstOverlay = useFirstLoadOverlay(context, locale==='ar'?'جاري تحميل التحليلات':'Loading analytics', locale==='ar'?'يرجى الانتظار':'Please wait');
 
   const [perfSummary, setPerfSummary] = useState<PerformanceSummary | null>(null);
   const [perfSeries, setPerfSeries] = useState<PerformanceSeriesPoint[]>([]);
@@ -98,9 +101,9 @@ export default function VendorAnalytics({ setCurrentPage, ...context }: VendorAn
           if (cats.ok) setCatSales(cats.data as CategorySales[]);
         }
       } catch {}
-      if (!cancelled) { setMounted(true); setLoading(false); }
+      if (!cancelled) { setMounted(true); setLoading(false); hideFirstOverlay(); }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = false; };
   }, []);
 
   if (!mounted) return null;

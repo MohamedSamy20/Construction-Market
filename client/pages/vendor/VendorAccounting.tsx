@@ -7,11 +7,17 @@ import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
 import { success } from "../../utils/alerts";
+import { useFirstLoadOverlay } from "../../hooks/useFirstLoadOverlay";
 
 export default function VendorAccounting({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
   const vendorId = (context as any)?.user?.id || "guest";
   const [sub, setSub] = useState<any | null>(null);
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    locale === 'ar' ? 'جاري تحميل النظام المحاسبي' : 'Loading accounting system',
+    locale === 'ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -20,6 +26,9 @@ export default function VendorAccounting({ setCurrentPage, ...context }: Partial
       const parsed = raw ? JSON.parse(raw) : null;
       if (parsed && parsed.vendorId === vendorId) setSub(parsed);
     } catch {}
+    finally {
+      try { hideFirstOverlay(); } catch {}
+    }
   }, [vendorId]);
 
   const active = !!sub?.active;

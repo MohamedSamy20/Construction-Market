@@ -11,6 +11,7 @@ import { Package, Search, Filter, Plus, Edit, Trash2, Store, Tag, ArrowRight, Cl
 import { useTranslation } from '../../hooks/useTranslation';
 import { getProducts, createProduct, updateProduct, deleteProduct, getAllCategories, getProductById } from '@/services/products';
 import { getPendingProducts, approveProduct as approveProductAdmin, rejectProduct as rejectProductAdmin } from '@/services/admin';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 interface ProductRow {
   id: number;
@@ -27,7 +28,7 @@ interface ProductRow {
 
 export default function AdminProducts({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
-  const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(context, locale==='ar' ? 'جاري تحميل المنتجات' : 'Loading products', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [search, setSearch] = useState('');
   // status filter disabled (no backend field). Keep UI minimal
@@ -42,7 +43,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
   const [categories, setCategories] = useState<Array<{ id: number | string; name: string }>>([]);
 
   useEffect(() => {
-    reload();
+    (async () => { await reload(); hideFirstOverlay(); })();
     (async () => {
       try {
         const r = await getAllCategories();
