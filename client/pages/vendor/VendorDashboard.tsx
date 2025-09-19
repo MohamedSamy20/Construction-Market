@@ -132,37 +132,46 @@ export default function VendorDashboard({ setCurrentPage, ...context }: Partial<
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        // Load products (owned by vendor)
-        const rp = await getMyProducts();
-        if (!cancelled && rp.ok && Array.isArray(rp.data)) setProducts(rp.data as any[]);
-      } catch {}
-      try {
-        // Load vendor orders
-        const ro = await apiListVendorOrders({ vendorId: 'me' });
-        if (!cancelled && ro.ok && Array.isArray(ro.data)) setOrders(ro.data as any[]);
-      } catch {}
-      try {
-        // Load vendor services (owned by vendor)
-        const rs = await listVendorServices({ vendorId: 'me' });
-        if (!cancelled && rs.ok && Array.isArray(rs.data)) setServices(rs.data as any[]);
-      } catch {}
-      // Load analytics
-      try {
-        const [ps, pser, cs, cser] = await Promise.all([
-          getPerformanceSummary(),
-          getPerformanceSeries(6),
-          getCustomersSummary(),
-          getCustomersSeries(6),
-        ]);
-        if (!cancelled) {
-          if (ps.ok) setPerfSummary(ps.data as PerformanceSummary);
-          if (pser.ok) setPerfSeries(pser.data as PerformanceSeriesPoint[]);
-          if (cs.ok) setCustSummary(cs.data as CustomersSummary);
-          if (cser.ok) setCustSeries(cser.data as CustomersSeriesPoint[]);
-        }
-      } catch {}
-      if (!cancelled) setLoading(false);
+      // Use global loader for initial dashboard hydration (essentials only)
+      (context as any)?.showLoading?.(locale==='ar' ? 'جاري تحميل لوحة التحكم...' : 'Loading dashboard...');
+
+      // Fetch essentials in parallel to shorten visible loading time
+      const [rp, ro, rs] = await Promise.allSettled([
+        getMyProducts(),
+        apiListVendorOrders({ vendorId: 'me' }),
+        listVendorServices({ vendorId: 'me' })
+      ]);
+
+      if (!cancelled) {
+        try {
+          if (rp.status === 'fulfilled' && rp.value?.ok && Array.isArray(rp.value.data)) setProducts(rp.value.data as any[]);
+        } catch {}
+        try {
+          if (ro.status === 'fulfilled' && ro.value?.ok && Array.isArray(ro.value.data)) setOrders(ro.value.data as any[]);
+        } catch {}
+        try {
+          if (rs.status === 'fulfilled' && rs.value?.ok && Array.isArray(rs.value.data)) setServices(rs.value.data as any[]);
+        } catch {}
+        setLoading(false);
+      }
+
+      // Hide the overlay as soon as essentials are ready
+      (context as any)?.hideLoading?.();
+
+      // Load analytics in the background (non-blocking)
+      Promise.allSettled([
+        getPerformanceSummary(),
+        getPerformanceSeries(6),
+        getCustomersSummary(),
+        getCustomersSeries(6),
+      ]).then((results) => {
+        if (cancelled) return;
+        const [ps, pser, cs, cser] = results;
+        try { if (ps.status === 'fulfilled' && ps.value?.ok) setPerfSummary(ps.value.data as PerformanceSummary); } catch {}
+        try { if (pser.status === 'fulfilled' && pser.value?.ok) setPerfSeries(pser.value.data as PerformanceSeriesPoint[]); } catch {}
+        try { if (cs.status === 'fulfilled' && cs.value?.ok) setCustSummary(cs.value.data as CustomersSummary); } catch {}
+        try { if (cser.status === 'fulfilled' && cser.value?.ok) setCustSeries(cser.value.data as CustomersSeriesPoint[]); } catch {}
+      }).catch(() => {/* no-op */});
     })();
     return () => { cancelled = true; };
   }, []);

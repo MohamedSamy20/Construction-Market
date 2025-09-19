@@ -1,3 +1,16 @@
+  // Parse a composite contract key into readable fields
+  const parseContractKey = (idStr: string): Partial<FavoriteItem> => {
+    try {
+      if (!/^contract:/.test(idStr)) return {};
+      const parts = idStr.split('|');
+      const name = decodeURIComponent(parts[1] || '').trim();
+      const price = Number(parts[2] || 0);
+      return {
+        name: name || idStr,
+        price: Number.isFinite(price) ? price : 0,
+      } as Partial<FavoriteItem>;
+    } catch { return {}; }
+  };
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
@@ -13,12 +26,56 @@ export default function Favorites(props: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
   const [items, setItems] = useState<FavoriteItem[]>([]);
 
+  // Normalize any incoming id to a safe string; return '' if invalid
+  const normalizeId = (val: any): string => {
+    try {
+      const raw = String(val ?? '').trim();
+      if (!raw || raw === 'undefined' || raw === 'null') return '';
+      // Prefer 24-hex ObjectId or numeric prefix if present
+      const oid = raw.match(/^[a-fA-F0-9]{24}(?=\b|\|)/)?.[0];
+      if (oid) return oid;
+      const num = raw.match(/^\d+(?=\b|\|)/)?.[0];
+      if (num) return num;
+      return raw;
+    } catch { return ''; }
+  };
+
   const refresh = () => {
-    const list = getFavorites();
+    const list = getFavorites().map((p) => {
+      if (typeof p.id === 'string' && p.id.startsWith('contract:')) {
+        const parsed = parseContractKey(p.id);
+        return { ...p, ...parsed } as FavoriteItem;
+      }
+      return p;
+    });
     setItems(list);
   };
 
   useEffect(() => {
+    // If logged-in, reflect server-backed wishlist from Router context
+    const isLoggedIn = !!props.user;
+    if (isLoggedIn) {
+      const list = (props.wishlistItems || [])
+        .map((w: any) => {
+          const pid = normalizeId((w as any)?.productId ?? (w as any)?.id);
+          if (!pid) return null;
+          const base: FavoriteItem = {
+            id: pid,
+            name: String((w as any)?.name ?? ''),
+            price: Number((w as any)?.price ?? 0),
+            image: (w as any)?.image,
+            brand: (w as any)?.brand,
+          } as FavoriteItem;
+          if (pid.startsWith('contract:')) {
+            return { ...base, ...parseContractKey(pid) } as FavoriteItem;
+          }
+          return base;
+        })
+        .filter(Boolean) as FavoriteItem[];
+      setItems(list);
+      return;
+    }
+    // Guest mode: use localStorage
     refresh();
     const onStorage = (e: StorageEvent) => { if (e.key === 'favorites_v1') refresh(); };
     const onCustom = () => refresh();
@@ -32,7 +89,7 @@ export default function Favorites(props: Partial<RouteContext>) {
         window.removeEventListener('favorites_updated', onCustom as any);
       }
     };
-  }, []);
+  }, [props.user?.id, (props.wishlistItems || []).length]);
 
   // One-time migration: if guest and favorites are empty but context wishlist has items, migrate them to localStorage
   useEffect(() => {
@@ -101,11 +158,18 @@ export default function Favorites(props: Partial<RouteContext>) {
                         </div>
                       )}
                       <div className="mt-3 flex gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          removeFavorite(p.id);
-                          try { window.dispatchEvent(new Event('favorites_updated')); } catch {}
-                          refresh();
-                        }}>
+                        <Button size="sm" variant="secondary" onClick={async () => {
+              if (props.user) {
+                // Logged-in: remove via server and then refresh from context
+                const pid = normalizeId(p.id);
+                if (pid) await (props.removeFromWishlist as any)?.(pid);
+                // Context effect above will update items
+              } else {
+                if (p?.id) removeFavorite(p.id);
+                try { window.dispatchEvent(new Event('favorites_updated')); } catch {}
+                refresh();
+              }
+            }}>
                           {locale==='ar' ? 'إزالة' : 'Remove'}
                         </Button>
                         <Button size="sm" onClick={() => {

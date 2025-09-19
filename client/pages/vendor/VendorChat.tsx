@@ -7,10 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { getConversation, getConversationByKeys, listMessages, sendMessage } from "@/services/chat";
+import { useFirstLoadOverlay } from "../../hooks/useFirstLoadOverlay";
 
 export default function VendorChat({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    isAr ? 'جاري تحميل المحادثة' : 'Loading chat',
+    isAr ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [technicianId, setTechnicianId] = useState<string>("");
   const [technicianName, setTechnicianName] = useState<string>("");
@@ -28,8 +34,10 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
     const tid = window.localStorage.getItem('chat_technician_id') || '';
     const sid = window.localStorage.getItem('chat_service_id') || '';
     const cid = window.localStorage.getItem('chat_conversation_id') || null;
+    const tname = window.localStorage.getItem('chat_technician_name') || '';
     setTechnicianId(tid);
     setServiceId(sid);
+    if (tname && !technicianName) setTechnicianName(tname);
     if (cid) setConversationId(String(cid));
     // Fallback: if no conversation id but we have keys and user is vendor, try resolve
     if (!cid && tid && sid) {
@@ -44,9 +52,9 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
         } catch (e) {
           // ignore; will show empty state
           console.warn('Failed to resolve conversation by keys', e);
-        }
+        } finally { try { hideFirstOverlay(); } catch {} }
       })();
-    }
+    } else { try { hideFirstOverlay(); } catch {} }
   }, []);
 
   // Load conversation details if only cid known (optional)
@@ -135,7 +143,7 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-base">
               <span>{isAr ? 'مراسلة الفني' : 'Message Technician'}</span>
-              <div className="text-xs text-muted-foreground">{isAr ? `الفني: ${technicianName || 'غير معرّف'} • الخدمة: #${serviceId}` : `Tech: ${technicianName || 'Unknown'} • Service: #${serviceId}`}</div>
+              <div className="text-xs text-muted-foreground">{isAr ? `الفني: ${technicianName || 'الفني'}` : `Tech: ${technicianName || 'Technician'}`}</div>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -152,13 +160,14 @@ export default function VendorChat({ setCurrentPage, ...context }: Partial<Route
                 <div className="space-y-2">
                   {messages.map((m, i) => {
                     const isMine = m.from === vendorId;
-                    const senderName = m.from === vendorId ? (vendorName || (isAr ? 'أنا' : 'Me')) : (technicianName || (isAr ? 'الفني' : 'Technician'));
+                    const senderName = isMine ? (isAr ? 'أنا' : 'Me') : (technicianName || (isAr ? 'الفني' : 'Technician'));
                     return (
-                      <div key={m.id ?? i} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                      <div key={m.id ?? i} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                        <div className={`text-[11px] mb-1 ${isMine ? 'text-right' : 'text-left'} ${isMine ? 'text-blue-700' : 'text-muted-foreground'}`}>{senderName}</div>
                         <div className={`max-w-[70%] rounded-lg px-3 py-2 text-sm ${isMine ? 'bg-blue-600 text-white' : 'bg-white border'}`}>
                           <div>{m.text}</div>
                           <div className={`text-[10px] opacity-70 mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
-                            {senderName} • {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
+                            {new Date(m.ts).toLocaleString(isAr ? 'ar-EG' : 'en-US')}
                           </div>
                         </div>
                       </div>

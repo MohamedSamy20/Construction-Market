@@ -35,6 +35,7 @@ import type { RouteContext } from "../components/routerTypes";
 import { getOpenProjects, getProjects, getMyProjects, createProject, deleteProject } from "@/services/projects";
 import { getProjectCatalog, type ProjectCatalog } from "@/services/options";
 import { toastError, toastInfo } from "../utils/alerts";
+import { useFirstLoadOverlay } from "../hooks/useFirstLoadOverlay";
 
 // Mock data removed; show only user-added projects
 const mockProjects: any[] = [];
@@ -104,12 +105,23 @@ export default function Projects({ setCurrentPage, ...rest }: ProjectsProps) {
   const isLoggedIn = Boolean((rest as any)?.user);
   const currentUserId = (rest as any)?.user?.id ? String((rest as any).user.id) : '';
   const isVendor = ((rest as any)?.user?.role === 'vendor');
+  const hideFirstOverlay = useFirstLoadOverlay(
+    rest,
+    locale==='ar' ? 'جاري تحميل المشاريع' : 'Loading projects',
+    locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [projects, setProjects] = useState(mockProjects);
   const [filtered, setFiltered] = useState(mockProjects);
   const [openProjects, setOpenProjects] = useState<any[]>([]);
   const [browseProjects, setBrowseProjects] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<ProjectCatalog | null>(null);
+  // Track initial load completion to hide overlay once
+  const [loadedCatalog, setLoadedCatalog] = useState(false);
+  const [loadedOpen, setLoadedOpen] = useState(false);
+  const [loadedBrowse, setLoadedBrowse] = useState(false);
+  const [loadedMine, setLoadedMine] = useState(false);
+  const [overlayHidden, setOverlayHidden] = useState(false);
 
   // Builder state
   const [ptype, setPtype] = useState<string>('');
@@ -216,6 +228,7 @@ export default function Projects({ setCurrentPage, ...rest }: ProjectsProps) {
         const r = await getProjectCatalog();
         if (!cancelled && r) setCatalog(r);
       } catch {}
+      finally { if (!cancelled) setLoadedCatalog(true); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -263,6 +276,7 @@ export default function Projects({ setCurrentPage, ...rest }: ProjectsProps) {
           }
         }
       } catch {}
+      finally { if (!cancelled) setLoadedMine(true); }
     })();
     return () => { cancelled = true; };
   }, [hasToken, isVendor, currentUserId, locale]);
@@ -285,6 +299,7 @@ export default function Projects({ setCurrentPage, ...rest }: ProjectsProps) {
           setOpenProjects(list);
         }
       } catch {}
+      finally { if (!cancelled) setLoadedOpen(true); }
     };
     load();
     return () => { cancelled = true; };
@@ -310,9 +325,18 @@ export default function Projects({ setCurrentPage, ...rest }: ProjectsProps) {
           setBrowseProjects(mapped);
         }
       } catch {}
+      finally { if (!cancelled) setLoadedBrowse(true); }
     })();
     return () => { cancelled = true; };
   }, [locale]);
+
+  // Hide first-load overlay once any of the initial fetches completes
+  useEffect(() => {
+    if (!overlayHidden && (loadedCatalog || loadedOpen || loadedBrowse || loadedMine)) {
+      try { hideFirstOverlay(); } catch {}
+      setOverlayHidden(true);
+    }
+  }, [loadedCatalog, loadedOpen, loadedBrowse, loadedMine, overlayHidden, hideFirstOverlay]);
 
   // Stop persisting user projects to localStorage
   useEffect(() => {}, [userProjects]);

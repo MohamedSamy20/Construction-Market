@@ -45,24 +45,30 @@ export default function TechnicianProjects({ setCurrentPage, ...context }: Props
 
   useEffect(() => {
     (async () => {
+      (context as any)?.showLoading?.(isAr ? 'جاري تحميل المشاريع...' : 'Loading projects...');
       try {
         const { ok, data } = await getOpenProjects();
         if (ok && Array.isArray(data)) setUserProjects(data as any[]);
         else setUserProjects([]);
       } catch { setUserProjects([]); }
-    })();
+    })().finally(() => {
+      (context as any)?.hideLoading?.();
+    });
   }, []);
 
   // Load my offers for submitted set
   useEffect(() => {
     (async () => {
+      (context as any)?.showLoading?.(isAr ? 'جاري تحميل عروضك...' : 'Loading your offers...');
       try {
         if (!technicianId) { setMyOffers([]); return; }
         const { ok, data } = await getTechnicianOffers(String(technicianId));
         if (ok && Array.isArray(data)) setMyOffers(data as any[]);
         else setMyOffers([]);
       } catch { setMyOffers([]); }
-    })();
+    })().finally(() => {
+      (context as any)?.hideLoading?.();
+    });
   }, [technicianId]);
 
   const labelForProductType = (id: string) => {

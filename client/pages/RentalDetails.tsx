@@ -28,6 +28,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { WishlistItem } from '../components/Router';
 import { getRentalById } from '@/services/rentals';
 import { getProductById } from '@/services/products';
+import { toastSuccess, toastInfo } from '../utils/alerts';
 
 interface RentalDetailsProps {
   currentPage?: string;
@@ -64,8 +65,8 @@ export default function RentalDetails({
   const [userRating, setUserRating] = useState<number | null>(null);
   const [userComment, setUserComment] = useState('');
 
-  // remove static placeholder; we'll rely on rental only
-  const isWishlisted = false;
+  // isWishlisted will be computed after prodToUse is defined
+  let isWishlisted = false;
 
   const [rental, setRental] = useState<any | null>(null);
   // On mount, try to read selected_rental and fetch latest from backend (with robust image fallback)
@@ -132,6 +133,10 @@ export default function RentalDetails({
   } : null;
 
   const prodToUse:any = mappedProduct || { id: 'r-unknown', name: locale==='ar'?'عقد تأجير':'Rental', brand: '', category: 'Rental', subCategory: '', price: 0, originalPrice: 0, images: [''], inStock: true, stockCount: 1 };
+  // Wishlist state from Router context (after prodToUse available)
+  isWishlisted = (isInWishlist && prodToUse?.id)
+    ? !!isInWishlist(String(prodToUse.id))
+    : false;
   const images = (Array.isArray(prodToUse.images) && prodToUse.images.length > 0) ? prodToUse.images : [''];
   const discountPercentage =
     (prodToUse.originalPrice > prodToUse.price)
@@ -378,6 +383,36 @@ export default function RentalDetails({
                   <Button className="flex-1" onClick={handleAddToCart} disabled={!normalizedInStock}>
                     <ShoppingCart className="h-4 w-4 ml-2" />
                     {t('addToCart')}
+                  </Button>
+                )}
+                {!isVendor && (
+                  <Button
+                    variant="outline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const pid = String(prodToUse?.id || '');
+                      if (!pid) return;
+                      if (!isWishlisted) {
+                        addToWishlist && addToWishlist({
+                          id: pid,
+                          name: getText(prodToUse?.name),
+                          price: Number(prodToUse?.price || 0),
+                          brand: getText(prodToUse?.brand),
+                          originalPrice: Number(prodToUse?.originalPrice || 0),
+                          image: images[0] || '',
+                          inStock: true,
+                        } as any);
+                        toastSuccess(locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة', locale==='ar');
+                      } else {
+                        removeFromWishlist && removeFromWishlist(pid);
+                        toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
+                      }
+                    }}
+                    className={isWishlisted ? 'text-red-500 border-red-500' : ''}
+                    title={locale==='ar'?'مفضلة':'Favorite'}
+                  >
+                    <Heart className={`h-4 w-4 ${isWishlisted ? 'fill-current' : ''}`} />
                   </Button>
                 )}
                 <Button variant="outline">

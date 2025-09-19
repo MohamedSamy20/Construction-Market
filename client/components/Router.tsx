@@ -6,8 +6,8 @@ import { getCart as apiGetCart, addItem as apiAddItem, updateItemQuantity as api
 import Homepage from "../pages/Homepage";
 import { useTranslation } from "../hooks/useTranslation";
 import { getProfile } from "@/services/auth";
-import { toastInfo } from "../utils/alerts";
-import { getWishlist as apiGetWishlist, addToWishlist as apiAddToWishlist, removeFromWishlist as apiRemoveFromWishlist } from "@/services/wishlist";
+import { toastInfo, toastError } from "../utils/alerts";
+import { getWishlist as apiGetWishlist, addToWishlist as apiAddToWishlist, removeFromWishlist as apiRemoveFromWishlist, toggleWishlist as apiToggleWishlist } from "@/services/wishlist";
 import { getProductById } from "@/services/products";
 import LoadingOverlay from "./LoadingOverlay";
 
@@ -280,7 +280,14 @@ export default function Router() {
           const enriched = await Promise.all(baseItems.map(async (ci) => {
             if (ci.image && ci.name) return ci;
             try {
-              const p = await getProductById(ci.id);
+              const pid = normalizeProductIdForApi(ci.id);
+              if (pid === null) return ci;
+              const pidStr = String(pid);
+              // Only fetch if it's a valid Mongo ObjectId (24 hex) or strictly numeric id
+              const isValidOid = /^[a-fA-F0-9]{24}$/.test(pidStr);
+              const isNumeric = /^\d+$/.test(pidStr);
+              if (!isValidOid && !isNumeric) return ci;
+              const p = await getProductById(pid as any);
               if (p.ok && p.data) {
                 const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
                 const image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
@@ -319,24 +326,36 @@ export default function Router() {
         if (r.ok && Array.isArray(r.data)) {
           const raw = r.data as any[];
           const enriched = await Promise.all(raw.map(async (w) => {
-            const pid = Number((w as any).productId ?? (w as any).id);
+            const rawPid = (w as any).productId ?? (w as any).id;
+            const pidNorm = normalizeProductIdForApi(rawPid);
             let image: string | undefined;
             let price: number | undefined;
-            let name: string | undefined = (w as any).productName;
+            let name: string | undefined = (w as any).productName || (w as any).name;
             try {
-              if (Number.isFinite(pid)) {
-                const p = await getProductById(pid);
-                if (p.ok && p.data) {
-                  const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
-                  image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
-                  price = Number((p.data as any).price ?? 0);
-                  if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined;
+              if (pidNorm !== null) {
+                const pidStr = String(pidNorm);
+                const isValidOid = /^[a-fA-F0-9]{24}$/.test(pidStr);
+                const isNumeric = /^\d+$/.test(pidStr);
+                if (isValidOid || isNumeric) {
+                  const p = await getProductById(pidNorm as any);
+                  if (p.ok && p.data) {
+                    const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
+                    image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
+                    price = Number((p.data as any).price ?? 0);
+                    if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined;
+                  }
                 }
               }
             } catch {}
+            const idStr = String(pidNorm ?? rawPid ?? '');
+            // Friendly fallback name for composite contract keys like 'contract:...|name|price|...'
+            if (!name && /^contract:/.test(idStr)) {
+              const parts = idStr.split('|');
+              name = decodeURIComponent(parts[1] || parts[0].replace('contract:', 'contract'));
+            }
             return {
-              id: String(pid),
-              name: name || String(pid),
+              id: idStr,
+              name: name || idStr,
               price: price ?? 0,
               image,
               inStock: true,
@@ -351,6 +370,24 @@ export default function Router() {
     })();
   }, [user?.id]);
 
+  const normalizeProductIdForApi = (val: any): string | number | null => {
+    try {
+      const raw = String(val ?? '').trim();
+      if (!raw || raw === 'undefined' || raw === 'null') return null;
+      // Full Mongo ObjectId (24 hex)
+      if (/^[a-fA-F0-9]{24}$/.test(raw)) return raw;
+      // If composite like "<oid>|..." pick the 24-hex at the start
+      const oidPrefix = raw.match(/^[a-fA-F0-9]{24}(?=\b|\|)/);
+      if (oidPrefix && oidPrefix[0]) return oidPrefix[0];
+      // Strictly numeric
+      if (/^\d+$/.test(raw)) return Number(raw);
+      // If composite like "123|..." pick numeric prefix
+      const numPrefix = raw.match(/^\d+(?=\b|\|)/);
+      if (numPrefix && numPrefix[0]) return Number(numPrefix[0]);
+      return raw; // last resort, send as-is
+    } catch { return null; }
+  };
+
   const addToWishlist = async (item: WishlistItem) => {
     if (!user) {
       setReturnTo(currentPage);
@@ -358,46 +395,83 @@ export default function Router() {
       return;
     }
     try {
-      await apiAddToWishlist(Number(item.id));
-      const r = await apiGetWishlist();
-      if (r.ok && Array.isArray(r.data)) {
-        // trigger enrichment through effect by updating user id dep; or enrich inline
-        const raw = r.data as any[];
-        const enriched = await Promise.all(raw.map(async (w) => {
-          const pid = Number((w as any).productId ?? (w as any).id);
-          let image: string | undefined;
-          let price: number | undefined;
-          let name: string | undefined = (w as any).productName;
-          try { if (Number.isFinite(pid)) { const p = await getProductById(pid); if (p.ok && p.data) { const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : []; image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl; price = Number((p.data as any).price ?? 0); if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined; } } } catch {}
-          return { id: String(pid), name: name || String(pid), price: price ?? 0, image, inStock: true } as WishlistItem;
-        }));
-        setWishlistItems(enriched);
+      const pid = normalizeProductIdForApi((item as any)?.productId ?? item.id);
+      if (pid === null || Number.isNaN(pid)) {
+        toastInfo(locale==='ar' ? 'معرّف منتج غير صالح للمفضلة' : 'Invalid product id for wishlist', locale==='ar');
+        return;
       }
-    } catch {}
+      // Use server toggle to ensure single source of truth
+      const idStr = String(pid);
+      // Optimistic: add if not exists
+      let rollback: (()=>void)|null = null;
+      setWishlistItems((prev) => {
+        const exists = prev.some((w:any) => String(normalizeProductIdForApi((w as any).id)) === idStr);
+        if (!exists) {
+          const optimistic: WishlistItem = {
+            id: idStr,
+            name: String((item as any)?.name || idStr),
+            price: Number((item as any)?.price ?? 0),
+            image: (item as any)?.image,
+            inStock: true,
+            brand: (item as any)?.brand,
+            originalPrice: (item as any)?.originalPrice,
+            partNumber: (item as any)?.partNumber,
+          } as any;
+          rollback = () => setWishlistItems((p)=> p.filter((w:any)=> String(normalizeProductIdForApi((w as any).id)) !== idStr));
+          return [...prev, optimistic];
+        }
+        return prev;
+      });
+      const toggled = await apiToggleWishlist(pid as any);
+      if (toggled.ok && (toggled.data as any)?.success) {
+        const inWishlist = !!(toggled.data as any).inWishlist;
+        if (!inWishlist) {
+          // Server says it is removed; reflect locally
+          setWishlistItems((prev)=> prev.filter((w:any)=> String(normalizeProductIdForApi((w as any).id)) !== idStr));
+        } else {
+          // Optionally refresh details
+        }
+      } else {
+        if (typeof rollback === 'function') (rollback as () => void)();
+      }
+    } catch {
+      toastError(locale==='ar' ? 'تعذر إضافة المنتج إلى المفضلة' : 'Failed to add to wishlist', locale==='ar');
+    }
   };
 
   const removeFromWishlist = async (id: string) => {
     if (!user) return;
     try {
-      await apiRemoveFromWishlist(Number(id));
-      const r = await apiGetWishlist();
-      if (r.ok && Array.isArray(r.data)) {
-        const raw = r.data as any[];
-        const enriched = await Promise.all(raw.map(async (w) => {
-          const pid = Number((w as any).productId ?? (w as any).id);
-          let image: string | undefined;
-          let price: number | undefined;
-          let name: string | undefined = (w as any).productName;
-          try { if (Number.isFinite(pid)) { const p = await getProductById(pid); if (p.ok && p.data) { const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : []; image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl; price = Number((p.data as any).price ?? 0); if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined; } } } catch {}
-          return { id: String(pid), name: name || String(pid), price: price ?? 0, image, inStock: true } as WishlistItem;
-        }));
-        setWishlistItems(enriched);
+      const pid = normalizeProductIdForApi(id);
+      if (pid === null || Number.isNaN(pid as any)) return;
+      // Optimistic: remove now
+      const idStr = String(pid);
+      let rollback: (()=>void)|null = null;
+      setWishlistItems((prev) => {
+        const before = prev;
+        rollback = () => setWishlistItems(before);
+        return prev.filter((w:any) => String(normalizeProductIdForApi((w as any).id)) !== idStr);
+      });
+      const toggled = await apiToggleWishlist(pid as any);
+      if (toggled.ok && (toggled.data as any)?.success) {
+        const inWishlist = !!(toggled.data as any).inWishlist;
+        if (inWishlist) {
+          // Server says it is now added; restore
+          if (typeof rollback === 'function') (rollback as () => void)();
+        }
+      } else {
+        if (typeof rollback === 'function') (rollback as () => void)();
       }
     } catch {}
   };
 
   const isInWishlist = (id: string) => {
-    return wishlistItems.some((item: any) => String(item.productId ?? item.id) === String(id));
+    const norm = normalizeProductIdForApi(id);
+    if (norm === null) return false;
+    return wishlistItems.some((item: any) => {
+      const pid = normalizeProductIdForApi((item as any)?.productId ?? (item as any)?.id);
+      return pid !== null && String(pid) === String(norm);
+    });
   };
 
   // Navigation wrapper: push current page to history, update prevPage, then navigate

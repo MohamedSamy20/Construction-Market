@@ -8,9 +8,11 @@ import type { RouteContext } from '../../components/Router';
 import { getAllCategories, type CategoryDto, createCategory, updateCategory, deleteCategory } from '../../services/products';
 import { api } from '../../lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminProductOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(props, locale==='ar' ? 'جاري تحميل الفئات' : 'Loading categories', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   // New category inputs (Arabic and English)
   const [newCategoryAr, setNewCategoryAr] = useState('');
   const [newCategoryEn, setNewCategoryEn] = useState('');
@@ -66,6 +68,7 @@ export default function AdminProductOptions(props: Partial<RouteContext>) {
         setDbError(locale==='ar' ? 'تعذر الاتصال بالخادم' : 'Failed to contact server');
       } finally {
         if (mounted) setDbLoading(false);
+        if (mounted) hideFirstOverlay();
       }
     };
     void load();

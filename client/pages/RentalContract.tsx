@@ -13,6 +13,7 @@ import { RouteContext } from '../components/Router';
 import { getRentalById, adjustRentalDays, sendRentalMessage } from '@/services/rentals';
 import { getProductById } from '@/services/products';
 import { toastSuccess, toastError } from '../utils/alerts';
+import LoadingOverlay from '../components/LoadingOverlay';
 
 interface Props extends Partial<RouteContext> {}
 
@@ -21,28 +22,32 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
   const currency = locale === 'ar' ? 'ر.س' : 'SAR';
 
   const [rental, setRental] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [paid, setPaid] = useState(false);
   const [message, setMessage] = useState('');
   const messageRef = useRef<HTMLTextAreaElement|null>(null);
 
+  const isValidMongoId = (s: string) => /^[a-fA-F0-9]{24}$/.test(String(s || ''));
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        setLoading(true);
         if (typeof window === 'undefined') return;
         const url = new URL(window.location.href);
-        const qId = Number(url.searchParams.get('id') || '');
+        const qIdStr = String(url.searchParams.get('id') || '').trim();
         const raw = window.localStorage.getItem('selected_rental');
         const parsed = raw ? JSON.parse(raw) : null;
-        const rid = Number(qId || parsed?.id || parsed?.rentalId);
-        if (!rid) return;
+        const rid = String(qIdStr || parsed?.id || parsed?.rentalId || parsed?._id || '').trim();
+        if (!rid) { if (!cancelled) setRental(parsed ?? null); return; }
         const res = await getRentalById(rid);
         let data:any = res.ok && res.data ? res.data : parsed;
         if (!data) return;
-        if (!data.imageUrl && data.productId) {
+        if (!data.imageUrl && data.productId && isValidMongoId(String(data.productId)) && !String(data.productId).startsWith('contract:')) {
           try {
-            const p = await getProductById(Number(data.productId));
+            const p = await getProductById(String(data.productId));
             if (p.ok && p.data) {
               const first = Array.isArray((p.data as any).images)
                 ? ((p.data as any).images.map((im:any)=> im?.imageUrl).filter(Boolean)[0])
@@ -53,6 +58,7 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
         }
         if (!cancelled) setRental(data);
       } catch {}
+      finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -77,7 +83,7 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
   const payNow = async () => {
     try {
       if (rental?.id) {
-        await adjustRentalDays(Number(rental.id), Number(days));
+        await adjustRentalDays(String(rental.id), Number(days));
       }
       // Placeholder payment success
       setPaid(true);
@@ -118,7 +124,7 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
     if (!message.trim()) { toastError(locale==='ar'? 'اكتب رسالة أولاً' : 'Please write a message first', locale==='ar'); return; }
     try {
       if (rental?.id) {
-        await sendRentalMessage(Number(rental.id), { message });
+        await sendRentalMessage(String(rental.id), { message });
       }
       toastSuccess(locale==='ar'? 'تم إرسال الرسالة للتاجر' : 'Message sent to merchant', locale==='ar');
       setMessage('');
@@ -143,7 +149,12 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
         </div>
 
         {!rental ? (
-          <div className="text-center text-muted-foreground py-24">{locale==='ar'? 'جاري التحميل...' : 'Loading...'}</div>
+          <>
+            <LoadingOverlay open={loading} message={locale==='ar' ? 'جاري تحميل العقد...' : 'Loading contract...'} />
+            {!loading && (
+              <div className="text-center text-muted-foreground py-24">{locale==='ar'? 'لا توجد بيانات للعقد.' : 'No contract data found.'}</div>
+            )}
+          </>
         ) : (
           <div className="grid lg:grid-cols-2 gap-8">
             {/* Images */}

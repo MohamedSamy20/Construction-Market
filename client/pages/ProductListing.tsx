@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Search,
   Filter,
@@ -81,6 +81,8 @@ export default function ProductListing({
   const isVendor = false;
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
+  // Only show the global loading overlay once when the page initially mounts
+  const firstLoadRef = useRef(true);
 
   // Helper: collect all descendant category IDs for a given category id
   const collectDescendantIds = (list: CategoryDto[], rootId: string): string[] => {
@@ -108,6 +110,13 @@ export default function ProductListing({
     let cancelled = false;
     const load = async () => {
       try {
+        // Show global loading overlay on first entry to the products page
+        if (firstLoadRef.current && typeof (rest as any)?.showLoading === 'function') {
+          (rest as any).showLoading(
+            locale === 'ar' ? 'جاري تحميل المنتجات' : 'Loading products',
+            locale === 'ar' ? 'يرجى الانتظار' : 'Please wait'
+          );
+        }
         const sortMap: Record<string, { sortBy?: string; sortDirection?: 'asc'|'desc' }> = {
           relevance: {},
           'price-low': { sortBy: 'price', sortDirection: 'asc' },
@@ -263,6 +272,11 @@ export default function ProductListing({
         }
       } catch {
         if (!cancelled) setProducts([]);
+      } finally {
+        if (firstLoadRef.current && typeof (rest as any)?.hideLoading === 'function') {
+          (rest as any).hideLoading();
+          firstLoadRef.current = false;
+        }
       }
     };
     load();

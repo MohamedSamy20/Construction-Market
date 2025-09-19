@@ -6,9 +6,11 @@ import { Button } from '../../components/ui/button';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { RouteContext } from '../../components/Router';
 import { getAdminOption, setAdminOption } from '@/services/admin';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(props, locale==='ar' ? 'جاري تحميل خيارات الفنيين' : 'Loading technician options', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [newItem, setNewItem] = useState('');
 
@@ -27,7 +29,7 @@ export default function AdminTechnicianOptions(props: Partial<RouteContext>) {
         }
       } catch {
         if (!cancelled) setSpecialties([]);
-      }
+      } finally { if (!cancelled) hideFirstOverlay(); }
     })();
     return () => { cancelled = true; };
   }, []);

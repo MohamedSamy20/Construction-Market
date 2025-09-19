@@ -5,7 +5,7 @@ import { Package } from "lucide-react";
 import { useTranslation } from "../hooks/useTranslation";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { getProducts, type ProductDto } from "@/services/products";
 
 export default function Offers({ setCurrentPage, ...context }: Partial<RouteContext>) {
@@ -14,12 +14,19 @@ export default function Offers({ setCurrentPage, ...context }: Partial<RouteCont
   const [products, setProducts] = useState<ProductDto[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const firstLoadRef = useRef(true);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setLoading(true);
+        if (firstLoadRef.current && typeof (context as any)?.showLoading === 'function') {
+          (context as any).showLoading(
+            locale==='ar' ? 'جاري تحميل العروض' : 'Loading offers',
+            locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+          );
+        }
         const r = await getProducts({ page: 1, pageSize: 500, sortBy: 'CreatedAt', sortDirection: 'desc' as any });
         if (!cancelled) {
           const items = ((r.data as any)?.items ?? (r.data as any)?.Items ?? []) as ProductDto[];
@@ -30,6 +37,10 @@ export default function Offers({ setCurrentPage, ...context }: Partial<RouteCont
         if (!cancelled) setError(locale==='ar' ? 'فشل تحميل العروض' : 'Failed to load offers');
       } finally {
         if (!cancelled) setLoading(false);
+        if (firstLoadRef.current && typeof (context as any)?.hideLoading === 'function') {
+          (context as any).hideLoading();
+          firstLoadRef.current = false;
+        }
       }
     })();
     return () => { cancelled = true; };

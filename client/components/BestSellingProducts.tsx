@@ -16,7 +16,9 @@ import { getProducts } from '@/services/products';
 export default function BestSellingProducts({ setSelectedProduct, setCurrentPage, isInWishlist, addToWishlist, removeFromWishlist, addToCart, setSearchFilters, user }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
   const isVendor = user?.role === 'vendor';
+  const isLoggedIn = !!user;
   const [products, setProducts] = useState<any[]>([]);
+  const [wishOverrides, setWishOverrides] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -28,7 +30,8 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
         if (!cancelled && ok && data && Array.isArray((data as any).items)) {
           const arr = (data as any).items as any[];
           const mapped = arr.map((p) => ({
-            id: p.id,
+            // Ensure a stable, valid id per product (fallback to _id or productId)
+            id: p.id ?? p._id ?? (p as any).productId,
             name: locale === 'en' ? (p.nameEn ?? p.name) : (p.nameAr ?? p.nameEn ?? p.name),
             nameEn: p.nameEn ?? p.name,
             price: p.discountPrice ?? p.price ?? 0,
@@ -79,8 +82,8 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
         )}
         {!loading && products.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {products.map((product) => (
-            <Card key={product.id} className="group hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer" onClick={() => handleProductClick(product)}>
+          {products.map((product, idx) => (
+            <Card key={`${String(product.id ?? product.name ?? 'item')}-${idx}`} className="group hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer" onClick={() => handleProductClick(product)}>
               <div className="relative">
                 <div className="relative h-48 overflow-hidden">
                   {product.image ? (
@@ -99,36 +102,45 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
                 </Badge>
                 {!isVendor && (
                   <Button
-                      size="icon"
-                      variant="ghost"
-                      className={`absolute top-2 left-2 bg-white/80 hover:bg-white ${(isInWishlist && isInWishlist(String(product.id))) ? 'text-red-500' : 'text-gray-600 hover:text-red-500'}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        if (!isInWishlist || !isInWishlist(String(product.id))) {
-                          // Add to wishlist
-                          addToWishlist && addToWishlist({
-                            id: String(product.id),
-                            name: locale === 'en' ? (product.nameEn ?? product.name) : product.name,
-                            price: product.price,
-                            brand: locale === 'en' ? product.nameEn : product.name,
-                            originalPrice: product.originalPrice,
-                            image: product.image,
-                            inStock: true
-                          });
-                          
-                          toastSuccess(locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة', locale==='ar');
-                        } else {
-                          // Remove from wishlist
-                          removeFromWishlist && removeFromWishlist(String(product.id));
-                          
-                          toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
-                        }
-                      }}
-                    >
-                      <Heart className={`h-4 w-4 ${(isInWishlist && isInWishlist(String(product.id))) ? 'fill-current' : ''}`} />
-                    </Button>
+                    size="icon"
+                    variant="ghost"
+                    className={`absolute top-2 left-2 bg-white/80 hover:bg-white ${(() => { const pid = String(product.id ?? (product as any)._id ?? (product as any).productId ?? ''); const valid = !!pid && pid !== 'undefined' && pid !== 'null'; const filled = valid ? ((pid in wishOverrides) ? !!wishOverrides[pid] : !!(isInWishlist && isInWishlist(pid))) : false; return filled ? 'text-red-600' : 'text-gray-600 hover:text-red-600'; })()}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isLoggedIn) {
+                        // Redirect to login if not authenticated
+                        setCurrentPage && setCurrentPage('login');
+                        toastInfo(locale === 'ar' ? 'يرجى تسجيل الدخول لإضافة إلى المفضلة' : 'Please sign in to add to wishlist', locale==='ar');
+                        return;
+                      }
+                      const pid = String(product.id ?? (product as any)._id ?? (product as any).productId ?? '');
+                      if (!pid || pid === 'undefined' || pid === 'null') {
+                        toastInfo(locale==='ar' ? 'معرّف المنتج غير متاح' : 'Product ID unavailable');
+                        return;
+                      }
+                      const already = (pid in wishOverrides) ? !!wishOverrides[pid] : !!(isInWishlist && isInWishlist(pid));
+                      if (!already) {
+                        addToWishlist && addToWishlist({
+                          id: pid,
+                          name: locale === 'en' ? (product.nameEn ?? product.name) : product.name,
+                          price: product.price,
+                          brand: locale === 'en' ? product.nameEn : product.name,
+                          originalPrice: product.originalPrice,
+                          image: product.image,
+                          inStock: true,
+                        } as any);
+                        setWishOverrides((prev) => ({ ...prev, [pid]: true }));
+                        toastSuccess(locale === 'en' ? 'Added to wishlist' : 'تمت الإضافة إلى المفضلة', locale==='ar');
+                      } else {
+                        removeFromWishlist && removeFromWishlist(pid);
+                        setWishOverrides((prev) => ({ ...prev, [pid]: false }));
+                        toastInfo(locale === 'en' ? 'Removed from wishlist' : 'تمت الإزالة من المفضلة', locale==='ar');
+                      }
+                    }}
+                  >
+                    {(() => { const pid = String(product.id ?? (product as any)._id ?? (product as any).productId ?? ''); const valid = !!pid && pid !== 'undefined' && pid !== 'null'; const filled = valid ? ((pid in wishOverrides) ? !!wishOverrides[pid] : !!(isInWishlist && isInWishlist(pid))) : false; return (<Heart className={`h-4 w-4 ${filled ? 'fill-current text-red-600' : ''}`} />); })()}
+                  </Button>
                 )}
               </div>
               

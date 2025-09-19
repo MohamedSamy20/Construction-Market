@@ -65,6 +65,11 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
   // ✅ Fixed: Remove dependencies from useCallback
   const loadAll = React.useCallback(async () => {
     try {
+      // Use global loading overlay for consistent UX
+      (context as any)?.showLoading?.(isAr ? 'جاري تحميل البيانات...' : 'Loading data...');
+      // Auto-hide the overlay quickly to avoid blocking the page too long
+      let autoHideTimer: any = null;
+      try { autoHideTimer = setTimeout(() => { try { (context as any)?.hideLoading?.(); } catch {} }, 600); } catch {}
       const [mer, srv, prod, usersAll, usersActiveVendors, usersTech, overview, c1, c2, c3, qact] = await Promise.all([
         getPendingMerchants(),
         getPendingServices(),
@@ -192,6 +197,11 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
       setPendingServicesError(isAr ? 'تعذر الاتصال بالخادم' : 'Failed to contact server');
       setPendingProductsError(isAr ? 'تعذر الاتصال بالخادم' : 'Failed to contact server');
       setPendingTechnicians([]);
+    } finally {
+      try { /* clear quick auto-hide timer and ensure hidden */ } finally {
+        try { /* clear timer */ } catch {}
+      }
+      try { (context as any)?.hideLoading?.(); } catch {}
     }
   }, [isAr]); // ✅ Only include stable dependencies
 

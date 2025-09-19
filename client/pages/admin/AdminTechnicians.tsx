@@ -13,6 +13,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { getUsers as adminGetUsers } from '@/services/admin';
 import { approveTechnician, suspendTechnician } from '@/services/admin';
 import { getAdminUserById, type AdminUserDetails } from '@/services/adminUsers';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 interface Row {
   id: string;
@@ -28,6 +29,7 @@ interface Row {
 export default function AdminTechnicians({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(context, isAr ? 'جاري تحميل الفنيين' : 'Loading technicians', isAr ? 'يرجى الانتظار' : 'Please wait');
 
   const [rows, setRows] = useState<Row[]>([]);
   const [search, setSearch] = useState('');
@@ -68,7 +70,7 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
     finally { setViewLoading(false); }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { (async () => { await load(); hideFirstOverlay(); })(); }, []);
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();

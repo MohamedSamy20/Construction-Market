@@ -7,10 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { getProjectConversation, getProjectConversationByKeys, listProjectMessages, sendProjectMessage, createProjectConversation } from '@/services/projectChat';
+import { useFirstLoadOverlay } from '../hooks/useFirstLoadOverlay';
 
 export default function ProjectChat({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();
   const isAr = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(
+    context,
+    isAr ? 'جاري تحميل المحادثة' : 'Loading chat',
+    isAr ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [projectId, setProjectId] = useState<number | null>(null);
   const [merchantId, setMerchantId] = useState<string>('');
@@ -83,7 +89,9 @@ export default function ProjectChat({ setCurrentPage, ...context }: Partial<Rout
           } catch {}
         }
       } catch {}
+      finally { try { hideFirstOverlay(); } catch {} }
     })();
+    if (!cid && !(pid && midUsed)) { try { hideFirstOverlay(); } catch {} }
     // Listen to storage changes (e.g., when opened via notification without full reload)
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;

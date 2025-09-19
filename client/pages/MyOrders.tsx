@@ -11,19 +11,23 @@ import { listMyOrders, updateOrderStatus, type OrderDto } from '@/services/order
 
 type OrderStatus = 'delivered' | 'shipped' | 'processing' | string;
 
-export default function MyOrders({ user, setCurrentPage, goBack }: RouteContext) {
+export default function MyOrders({ user, setCurrentPage, goBack, showLoading, hideLoading }: RouteContext) {
+
   const { locale } = useTranslation();
   const [orders, setOrders] = useState<OrderDto[]>([]);
   const [loading, setLoading] = useState(true);
   const reload = async () => {
     setLoading(true);
     try {
+      showLoading?.(locale==='ar' ? 'جاري تحميل الطلبات...' : 'Loading orders...');
       const { ok, data } = await listMyOrders();
       setOrders(ok && Array.isArray(data) ? data! : []);
     } finally {
+      hideLoading?.();
       setLoading(false);
     }
   };
+
   useEffect(() => { reload(); }, []);
 
   const getStatusColor = (status: OrderStatus) => {

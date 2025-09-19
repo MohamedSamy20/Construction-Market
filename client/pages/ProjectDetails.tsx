@@ -15,6 +15,7 @@ import { getProjectById, getProjectBids, createBid, acceptBid, rejectBid, type B
 import { getProjectCatalog, type ProjectCatalog } from '@/services/options';
 import { createProjectConversation, getProjectConversationByKeys } from '@/services/projectChat';
 import { getAdminProjectById } from '@/services/admin';
+import { useFirstLoadOverlay } from '../hooks/useFirstLoadOverlay';
 
 // Keep catalogs in sync with ProjectsBuilder/Projects
 const productTypes = [
@@ -41,6 +42,11 @@ interface ProjectDetailsProps extends Partial<RouteContext> {}
 export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: ProjectDetailsProps) {
   const { locale } = useTranslation();
   const currency = locale === 'ar' ? 'ر.س' : 'SAR';
+  const hideFirstOverlay = useFirstLoadOverlay(
+    rest,
+    locale==='ar' ? 'جاري تحميل تفاصيل المشروع' : 'Loading project details',
+    locale==='ar' ? 'يرجى الانتظار' : 'Please wait'
+  );
 
   const [project, setProject] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -114,7 +120,7 @@ export default function ProjectDetails({ setCurrentPage, goBack, ...rest }: Proj
           }
         } catch {}
       } catch {}
-      finally { if (!cancelled) setLoading(false); }
+      finally { if (!cancelled) { setLoading(false); try { hideFirstOverlay(); } catch {} } }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

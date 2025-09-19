@@ -41,6 +41,14 @@ configureCloudinary();
 
 const app = express();
 
+// Global error visibility to diagnose startup crashes
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
 // CORS
 // Normalize multiple leading slashes in incoming URLs to avoid 404s from paths like //api/...
 app.use((req, _res, next) => {
@@ -139,14 +147,23 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // DB
-await connectDB();
-// Dev data seeders (create static Admin if configured)
-if (process.env.SEED_ADMIN === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_ADMIN !== 'false')) {
-  try { await seedAdmin(); } catch (e) { console.warn('[seed] admin seeding skipped:', e?.message || e); }
+try {
+  await connectDB();
+} catch (e) {
+  console.error('[startup] DB connection failed:', e);
+  process.exit(1);
 }
-// Optionally seed default Categories for development/testing
-if (process.env.SEED_CATEGORIES === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_CATEGORIES !== 'false')) {
-  try { await seedCategories(); } catch (e) { console.warn('[seed] categories seeding skipped:', e?.message || e); }
+// Dev data seeders (create static Admin if configured)
+try {
+  if (process.env.SEED_ADMIN === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_ADMIN !== 'false')) {
+    try { await seedAdmin(); } catch (e) { console.warn('[seed] admin seeding skipped:', e?.message || e); }
+  }
+  // Optionally seed default Categories for development/testing
+  if (process.env.SEED_CATEGORIES === 'true' || (process.env.NODE_ENV !== 'production' && process.env.SEED_CATEGORIES !== 'false')) {
+    try { await seedCategories(); } catch (e) { console.warn('[seed] categories seeding skipped:', e?.message || e); }
+  }
+} catch (e) {
+  console.warn('[startup] seeders errored:', e?.message || e);
 }
 
 // Health
@@ -195,6 +212,11 @@ app.use(notFound);
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`API running on http://localhost:${PORT}`);
-});
+try {
+  app.listen(PORT, () => {
+    console.log(`API running on http://localhost:${PORT}`);
+  });
+} catch (e) {
+  console.error('[startup] failed to listen:', e);
+  process.exit(1);
+}

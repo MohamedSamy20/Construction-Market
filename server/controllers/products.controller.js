@@ -1,4 +1,5 @@
 import { Product } from '../models/Product.js';
+import mongoose from 'mongoose';
 import { Category } from '../models/Category.js';
 import { body, validationResult } from 'express-validator';
 import { cloudinary } from '../config/cloudinary.js';
@@ -42,9 +43,16 @@ export async function rentals(req, res) {
 }
 
 export async function getById(req, res) {
-  const item = await Product.findById(req.params.id);
-  if (!item) return res.status(404).json({ success: false, message: 'Product not found' });
-  res.json(item);
+  try {
+    const { id } = req.params;
+    const isValid = mongoose.isValidObjectId(id);
+    if (!isValid) return res.status(400).json({ success: false, message: 'Invalid product id' });
+    const item = await Product.findById(id);
+    if (!item) return res.status(404).json({ success: false, message: 'Product not found' });
+    res.json(item);
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch product' });
+  }
 }
 
 export async function getBySlug(req, res) {

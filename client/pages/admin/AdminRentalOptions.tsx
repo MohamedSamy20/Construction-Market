@@ -8,9 +8,11 @@ import type { RouteContext } from '../../components/Router';
 import { getAvailableForRent, type ProductDto, getProductById } from '@/services/products';
 import { listPublicRentals, type RentalDto } from '@/services/rentals';
 import { ImageWithFallback } from '../../components/figma/ImageWithFallback';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 
 export default function AdminRentalOptions(props: Partial<RouteContext>) {
   const { locale } = useTranslation();
+  const hideFirstOverlay = useFirstLoadOverlay(props, locale==='ar' ? 'جاري تحميل خيارات التأجير' : 'Loading rental options', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'not_rented' | 'rented'>('not_rented');
   const [query, setQuery] = useState('');
@@ -51,7 +53,7 @@ export default function AdminRentalOptions(props: Partial<RouteContext>) {
           }
           setProductMap(baseMap);
         }
-      } finally { if (!cancelled) setLoading(false); }
+      } finally { if (!cancelled) { setLoading(false); hideFirstOverlay(); } }
     })();
     return () => { cancelled = true; };
   }, []);

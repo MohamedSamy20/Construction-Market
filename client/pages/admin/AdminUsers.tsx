@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { RouteContext } from '../../components/Router';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -27,6 +28,8 @@ import {
 import Header from '../../components/Header';
 import { useTranslation } from '../../hooks/useTranslation';
 import { useEffect, useState } from 'react';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
+
 import {
   getAdminUsers as apiGetAdminUsers,
   updateAdminUser as apiUpdateAdminUser,
@@ -52,6 +55,8 @@ export type UserRow = {
 export default function AdminUsers({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
   const isArabic = locale === 'ar';
+  const hideFirstOverlay = useFirstLoadOverlay(context, isArabic ? 'جاري تحميل المستخدمين' : 'Loading users', isArabic ? 'يرجى الانتظار' : 'Please wait');
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState('all');
@@ -128,7 +133,8 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
       setUsers([]);
     }
   };
-  useEffect(() => { reload(); }, []);
+  useEffect(() => { (async () => { await reload(); hideFirstOverlay(); })(); }, []);
+
   // Re-fetch when role/status filters change
   useEffect(() => { reload(); }, [selectedRole, selectedStatus]);
 
