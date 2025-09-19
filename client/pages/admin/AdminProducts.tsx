@@ -29,6 +29,7 @@ interface ProductRow {
 export default function AdminProducts({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { t, locale } = useTranslation();
   const hideFirstOverlay = useFirstLoadOverlay(context, locale==='ar' ? 'جاري تحميل المنتجات' : 'Loading products', locale==='ar' ? 'يرجى الانتظار' : 'Please wait');
+  const isAr = locale === 'ar';
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [search, setSearch] = useState('');
   // status filter disabled (no backend field). Keep UI minimal
