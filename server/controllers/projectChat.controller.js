@@ -1,8 +1,12 @@
+import mongoose from 'mongoose';
 import { ProjectConversation } from '../models/ProjectConversation.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 
 export async function createConversation(req, res) {
   const { projectId, merchantId } = req.body || {};
+  if (!mongoose.isValidObjectId(projectId) || !mongoose.isValidObjectId(merchantId)) {
+    return res.status(400).json({ success: false, message: 'Invalid projectId or merchantId' });
+  }
   const customerId = req.user._id;
   let c = await ProjectConversation.findOne({ projectId, merchantId, customerId });
   if (!c) c = await ProjectConversation.create({ projectId, merchantId, customerId });
@@ -10,26 +14,53 @@ export async function createConversation(req, res) {
 }
 
 export async function getConversation(req, res) {
-  const c = await ProjectConversation.findById(req.params.id);
+  const { id } = req.params;
+  if (!mongoose.isValidObjectId(id)) return res.status(400).json({ success: false, message: 'Invalid id' });
+  const c = await ProjectConversation.findById(id);
   if (!c) return res.status(404).json({ success: false, message: 'Conversation not found' });
+  // Only participants can view
+  const uid = String(req.user._id);
+  const isParticipant = [String(c.customerId), String(c.merchantId)].includes(uid);
+  if (!isParticipant) return res.status(403).json({ success: false, message: 'Forbidden' });
   res.json({ id: c._id, projectId: String(c.projectId), customerId: String(c.customerId), merchantId: String(c.merchantId) });
 }
 
 export async function getConversationByKeys(req, res) {
   const { projectId, merchantId } = req.query || {};
-  const c = await ProjectConversation.findOne({ projectId, merchantId });
+  if (!mongoose.isValidObjectId(projectId) || !mongoose.isValidObjectId(merchantId)) {
+    return res.status(400).json({ success: false, message: 'Invalid projectId or merchantId' });
+  }
+  // Include customerId so we fetch the correct conversation between this customer and merchant for the project
+  const customerId = req.user?._id;
+  const query = customerId ? { projectId, merchantId, customerId } : { projectId, merchantId };
+  const c = await ProjectConversation.findOne(query);
   if (!c) return res.status(404).json({ success: false, message: 'Not found' });
   res.json({ id: c._id });
 }
 
 export async function listMessages(req, res) {
-  const messages = await ChatMessage.find({ conversationId: req.params.conversationId }).sort({ createdAt: 1 });
+  const conversationId = req.params.id || req.params.conversationId;
+  if (!mongoose.isValidObjectId(conversationId)) return res.status(400).json({ success: false, message: 'Invalid conversation id' });
+  const conv = await ProjectConversation.findById(conversationId);
+  if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' });
+  const uid = String(req.user._id);
+  const isParticipant = [String(conv.customerId), String(conv.merchantId)].includes(uid);
+  if (!isParticipant) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const messages = await ChatMessage.find({ conversationId }).sort({ createdAt: 1 });
   res.json(messages.map(m => ({ id: m._id, from: String(m.fromUserId), text: m.text, createdAt: m.createdAt })));
 }
 
 export async function sendMessage(req, res) {
   const { text } = req.body || {};
-  const msg = await ChatMessage.create({ conversationId: req.params.conversationId, fromUserId: req.user._id, text });
+  const conversationId = req.params.id || req.params.conversationId;
+  if (!mongoose.isValidObjectId(conversationId)) return res.status(400).json({ success: false, message: 'Invalid conversation id' });
+  if (!text || !String(text).trim()) return res.status(400).json({ success: false, message: 'Text is required' });
+  const conv = await ProjectConversation.findById(conversationId);
+  if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' });
+  const uid = String(req.user._id);
+  const isParticipant = [String(conv.customerId), String(conv.merchantId)].includes(uid);
+  if (!isParticipant) return res.status(403).json({ success: false, message: 'Forbidden' });
+  const msg = await ChatMessage.create({ conversationId, fromUserId: req.user._id, text: String(text) });
   res.status(201).json({ id: msg._id });
 }
 

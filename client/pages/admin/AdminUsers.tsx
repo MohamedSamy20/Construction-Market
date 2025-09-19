@@ -446,9 +446,9 @@ export default function AdminUsers({ setCurrentPage, ...context }: Partial<Route
 
         {/* Edit User Dialog */}
         <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) setEditMode(null); }}>
-          <DialogContent className="max-w-lg bg-white/95 backdrop-blur-sm border border-white/20">
-            <DialogHeader>
-              <DialogTitle>{t('editUser')}</DialogTitle>
+          <DialogContent className="w-[95vw] sm:w-[640px] md:w-[800px] lg:w-[960px] xl:w-[1024px] max-w-none max-h-[90vh] overflow-y-auto bg-white/95 backdrop-blur-sm border border-white/20">
+            <DialogHeader className="text-center">
+              <DialogTitle className="w-full text-center">{t('editUser')}</DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Header from '../../components/Header';
 import type { RouteContext } from '../../components/Router';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -14,7 +14,62 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { getPendingMerchants, getUsers as adminGetUsers, approveMerchant, suspendMerchant } from '@/services/admin';
 import { successAlert, warningAlert } from '../../utils/alerts';
 import { getAdminUserById, type AdminUserDetails } from '@/services/adminUsers';
-import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
+
+import { api } from '@/lib/api';
+
+// Normalize media URLs: if relative (e.g., /uploads/xyz.jpg), prefix with API base
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000').replace(/\/+$/, '');
+const BASE_NO_API = /\/api\/?$/.test(API_BASE) ? API_BASE.replace(/\/api\/?$/, '') : API_BASE;
+const normalizeUrl = (u?: string | null): string | undefined => {
+  if (!u) return undefined;
+  // Replace Windows backslashes and trim quotes/spaces
+  const s = String(u).replace(/\\/g, '/').replace(/^\s*["']|["']\s*$/g, '').trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  try {
+    // ensure leading slash
+    const path = s.startsWith('/') ? s : `/${s}`;
+    return `${BASE_NO_API}${path}`;
+  } catch { return s; }
+};
+
+// Image component that falls back to authenticated fetch when direct <img> fails (e.g., protected URLs)
+function ImageWithAuth({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+  const [err, setErr] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const url = useMemo(() => normalizeUrl(src || ''), [src]);
+  useEffect(() => { setErr(false); setBlobUrl(null); }, [url]);
+  if (!url) return <span className="text-xs text-muted-foreground">—</span>;
+  if (blobUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={blobUrl} alt={alt} className={className} />;
+  }
+  if (!err) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt={alt} className={className} onError={async ()=>{
+      try {
+        const r = await api.get<Blob>(url, { auth: true, headers: { Accept: 'application/octet-stream' } as any });
+        if (r.ok && r.data) {
+          // api.get returns JSON by default; perform native fetch to get blob if needed
+          const native = await fetch(url, { credentials: 'include' });
+          if (native.ok) {
+            const b = await native.blob();
+            const obj = URL.createObjectURL(b);
+            setBlobUrl(obj);
+            return;
+          }
+        }
+      } catch {}
+      setErr(true);
+    }} />;
+  }
+  return <a className="text-primary underline" href={url} target="_blank" rel="noreferrer">فتح الصورة</a>;
+}
+
+function LinkWithAuth({ href, children }:{ href?: string; children: React.ReactNode }){
+  const url = normalizeUrl(href || '');
+  if (!url) return <span className="text-xs text-muted-foreground">—</span>;
+  return <a className="text-primary underline" href={url} target="_blank" rel="noreferrer">{children}</a>;
+}
 
 type VendorRow = {
   id: string;
@@ -36,6 +91,8 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
   const [viewLoading, setViewLoading] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   const [viewUser, setViewUser] = useState<AdminUserDetails | null>(null);
+  const [profileImgError, setProfileImgError] = useState(false);
+  const [docImgError, setDocImgError] = useState(false);
 
   useEffect(() => { (async () => { await Promise.all([loadVendors(), loadPending()]); hideFirstOverlay(); })(); }, []);
   const loadVendors = async () => {
@@ -59,11 +116,14 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
     try {
       const res = await getAdminUserById(userId);
       if (res.ok && res.data && (res.data as any).item) {
-        setViewUser((res.data as any).item as AdminUserDetails);
+        const item = (res.data as any).item as AdminUserDetails;
+        setViewUser(item);
       } else {
         setViewError('Failed to load user');
       }
-    } catch (e) { setViewError('Failed to load user'); }
+    } catch (e) {
+      setViewError('Failed to load user');
+    }
     finally { setViewLoading(false); }
   };
   const loadPending = async () => {
@@ -195,50 +255,101 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
         {/* Removed local add/edit vendor dialog – vendors are managed via backend only */}
 
         {/* View user dialog */}
-        <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{t('userDetails') || 'تفاصيل المستخدم'}</DialogTitle>
+        <Dialog open={viewOpen} onOpenChange={(o)=>{ setViewOpen(o); if (!o) { setProfileImgError(false); setDocImgError(false); } }}>
+          <DialogContent className="w-[95vw] sm:w-[640px] md:w-[800px] lg:w-[960px] xl:w-[1024px] max-w-none max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="text-center">
+              <DialogTitle className="w-full text-center">{t('vendorDetails') || 'تفاصيل البائع'}</DialogTitle>
             </DialogHeader>
-            {viewLoading && (
-              <div className="text-sm text-muted-foreground">{t('loading') || 'جارٍ التحميل...'}</div>
-            )}
-            {viewError && (
-              <div className="text-sm text-red-600">{viewError}</div>
-            )}
-            {viewUser && (
+            <div className="max-h-[70vh] overflow-y-auto pr-1">
+              {viewLoading && (
+                <div className="text-sm text-muted-foreground">{t('loading') || 'جارٍ التحميل...'}</div>
+              )}
+              {viewError && (
+                <div className="text-sm text-red-600">{viewError}</div>
+              )}
+              {viewUser && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-sm">
                 {/* Left: big preview images */}
                 <div className="lg:col-span-1 space-y-4">
-                  {/* Profile picture */}
+                  {/* Document as primary */}
                   <div>
-                    <Label className="text-muted-foreground">الصورة الشخصية</Label>
-                    <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                      {viewUser.profilePicture ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={viewUser.profilePicture} alt="profile" className="max-h-full max-w-full object-contain" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </div>
-                  </div>
-                  {/* License/document image preview if image */}
-                  <div>
-                    <Label className="text-muted-foreground">صورة الرخصة / المستند</Label>
+                    <Label className="text-muted-foreground">المستند</Label>
                     <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
                       {(() => {
-                        const url = (viewUser.licenseImagePath || viewUser.documentPath || '').toLowerCase();
+                        const doc = ((viewUser as any)?.documentUrl || viewUser.documentPath) as string | undefined;
+                        if (!doc) return <span className="text-xs text-muted-foreground">—</span>;
+                        const isImg = /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(String(doc).toLowerCase());
+                        return isImg ? (
+                          <ImageWithAuth src={doc} alt="document" className="max-h-full max-w-full object-contain" />
+                        ) : (
+                          <LinkWithAuth href={doc}>عرض/تنزيل المستند</LinkWithAuth>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                  {/* License image (or any doc that is an image) */}
+                  <div>
+                    <Label className="text-muted-foreground">صورة الرخصة</Label>
+                    <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                      {(() => {
+                        // Support multiple possible fields and arrays
+                        const docsArr = (Array.isArray((viewUser as any).documents) ? (viewUser as any).documents : []) as Array<{ url?: string; path?: string }>;
+                        const firstDoc = docsArr.find(d => d?.url || d?.path);
+                        // Prefer explicit license image, then any image field, then doc fields
+                        const raw = ( (viewUser as any)?.licenseImageUrl
+                                      || viewUser.licenseImagePath
+                                      || (viewUser as any)?.imageUrl
+                                      || '' ) as string;
+                        const url = String(raw || '').toLowerCase();
                         const isImg = /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(url);
-                        if ((viewUser.licenseImagePath || viewUser.documentPath) && isImg) {
-                          // eslint-disable-next-line @next/next/no-img-element
-                          return <img src={(viewUser.licenseImagePath || viewUser.documentPath)!} alt="doc" className="max-h-full max-w-full object-contain" />;
+                        if (raw && isImg) {
+                          return <ImageWithAuth src={String(raw)} alt="doc" className="max-h-full max-w-full object-contain" />;
                         }
-                        if (viewUser.licenseImagePath || viewUser.documentPath) {
-                          return (
-                            <a className="text-primary underline" href={(viewUser.licenseImagePath || viewUser.documentPath)!} target="_blank" rel="noreferrer">عرض/تنزيل</a>
-                          );
+                        // If no explicit image, try first document if it's an image
+                        const raw2 = ( (viewUser as any)?.documentUrl || viewUser.documentPath || firstDoc?.url || firstDoc?.path || '' ) as string;
+                        const isImg2 = /("|')?\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i.test(String(raw2));
+                        if (raw2 && isImg2) {
+                          return <ImageWithAuth src={String(raw2)} alt="license" className="max-h-full max-w-full object-contain" />;
                         }
+                        if (raw || raw2) { return <LinkWithAuth href={String(raw || raw2)}>عرض/تنزيل</LinkWithAuth>; }
                         return <span className="text-xs text-muted-foreground">—</span>;
+                      })()}
+                    </div>
+                    {/* If multiple documents exist, show small previews/links */}
+                    {Array.isArray((viewUser as any)?.documents) && (viewUser as any).documents.length > 1 && (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        {((viewUser as any).documents as Array<{ url?: string; path?: string }>).map((d, i) => {
+                          const src = normalizeUrl(d.url || d.path || '');
+                          const lower = String(d.url || d.path || '').toLowerCase();
+                          const isImg = /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(lower);
+                          return (
+                            <div key={`doc-${i}`} className="border rounded p-1 flex items-center justify-center h-20 bg-white">
+                              {src ? (
+                                isImg ? (
+                                  <ImageWithAuth src={src} alt={`doc-${i}`} className="max-h-full max-w-full object-contain" />
+                                ) : (
+                                  <LinkWithAuth href={src}>تحميل</LinkWithAuth>
+                                )
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground">—</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Additional image if provided (prefer profile picture, then imageUrl) */}
+                  <div>
+                    <Label className="text-muted-foreground">صورة أخرى</Label>
+                    <div className="mt-2 w-full h-40 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                      {(() => {
+                        const other = (viewUser as any)?.profilePicture || (viewUser as any)?.profileImageUrl || (viewUser as any)?.imageUrl as string | undefined;
+                        if (other && /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(String(other).toLowerCase())) {
+                          return <ImageWithAuth src={other} alt="image" className="max-h-full max-w-full object-contain" />;
+                        }
+                        return other ? <LinkWithAuth href={other}>عرض/تنزيل</LinkWithAuth> : <span className="text-xs text-muted-foreground">—</span>;
                       })()}
                     </div>
                   </div>
@@ -258,24 +369,46 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
                     <div>{viewUser.phoneNumber}</div>
                   </div>
                   <div>
-                    <Label className="text-muted-foreground">الأدوار</Label>
-                    <div>{(viewUser.roles || []).join(', ')}</div>
+                    <Label className="text-muted-foreground">الدور</Label>
+                    <div>{(() => {
+                      const map: Record<string, string> = { 'Admin': 'مدير', 'Merchant': 'تاجر', 'Technician': 'فني', 'Customer': 'عميل', 'Worker': 'عامل' };
+                      const roles = Array.isArray(viewUser.roles) ? viewUser.roles : [];
+                      const primary = roles[0] || '';
+                      return map[primary] || primary || '—';
+                    })()}</div>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">حالة الحساب</Label>
+                    <div>{viewUser.isActive ? 'نشط' : 'غير نشط'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">حالة التحقق</Label>
+                    <div>{viewUser.isVerified ? 'موثق' : 'غير موثق'}</div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">الشركة</Label>
-                    <div>{viewUser.companyName || '—'}</div>
+                    <div>{viewUser.companyName || (viewUser as any).businessName || (viewUser as any).company || '—'}</div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">المدينة / الدولة</Label>
                     <div>{[viewUser.city, viewUser.country].filter(Boolean).join(' / ') || '—'}</div>
                   </div>
+                  <div>
+                    <Label className="text-muted-foreground">تاريخ الإنضمام</Label>
+                    <div>{(() => { try { return viewUser.createdAt ? new Date(viewUser.createdAt as any).toLocaleDateString('ar-SA') : '—'; } catch { return '—'; } })()}</div>
+                  </div>
                   <div className="md:col-span-2">
                     <Label className="text-muted-foreground">العنوان</Label>
-                    <div>{viewUser.address || '—'}</div>
+                    <div>{
+                      viewUser.address
+                      || [viewUser.buildingNumber, viewUser.streetName, viewUser.city, viewUser.country].filter(Boolean).join(', ')
+                      || (viewUser as any).fullAddress
+                      || '—'
+                    }</div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">رقم ضريبي</Label>
-                    <div>{viewUser.taxNumber || '—'}</div>
+                    <div>{viewUser.taxNumber || (viewUser as any).vatNumber || (viewUser as any).taxId || (viewUser as any).tax_no || '—'}</div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">IBAN</Label>
@@ -283,15 +416,16 @@ export default function AdminVendors({ setCurrentPage, ...context }: Partial<Rou
                   </div>
                   <div>
                     <Label className="text-muted-foreground">بداية السجل</Label>
-                    <div>{viewUser.registryStart || '—'}</div>
+                    <div>{viewUser.registryStart || (viewUser as any).registryStartDate || (viewUser as any).commercialRegisterStart || '—'}</div>
                   </div>
                   <div>
                     <Label className="text-muted-foreground">نهاية السجل</Label>
-                    <div>{viewUser.registryEnd || '—'}</div>
+                    <div>{viewUser.registryEnd || (viewUser as any).registryEndDate || (viewUser as any).commercialRegisterEnd || '—'}</div>
                   </div>
                 </div>
               </div>
-            )}
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>

@@ -19,14 +19,15 @@ export default function RootLayout({
   const pathname = headersList.get('x-pathname') || ''
   const locale = pathname.split('/')[1] || 'ar'
   const isRTL = locale === 'ar'
+  const isProd = process.env.NODE_ENV === 'production'
   
   return (
     <html suppressHydrationWarning lang={locale} dir={isRTL ? 'rtl' : 'ltr'}>
       <body className="min-h-screen bg-background font-sans antialiased">
         {children}
         <Toaster position="top-center" richColors />
-        <Analytics />
-        <SpeedInsights />
+        {isProd && <Analytics />}
+        {isProd && <SpeedInsights />}
       </body>
     </html>
   )

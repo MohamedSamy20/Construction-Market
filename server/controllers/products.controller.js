@@ -164,7 +164,14 @@ export async function update(req, res) {
 }
 
 export async function remove(req, res) {
-  const deleted = await Product.findOneAndDelete({ _id: req.params.id, merchantId: req.user._id });
+  let deleted = null;
+  if (req.user?.role === 'Admin') {
+    // Admins can delete any product by ID
+    deleted = await Product.findByIdAndDelete(req.params.id);
+  } else {
+    // Merchants can only delete their own products
+    deleted = await Product.findOneAndDelete({ _id: req.params.id, merchantId: req.user._id });
+  }
   if (!deleted) return res.status(404).json({ success: false, message: 'Product not found' });
   res.json({ success: true });
 }
