@@ -26,8 +26,29 @@ interface Row {
 }
 
 export default function AdminTechnicians({ setCurrentPage, ...context }: Partial<RouteContext>) {
-  const { locale } = useTranslation();
+  const { t, locale } = useTranslation();
   const isAr = locale === 'ar';
+
+  // Map common profession values to Arabic for display
+  const mapProfessionAr = (val?: string | null) => {
+    if (!val) return '—';
+    const s = String(val).trim().toLowerCase();
+    const dict: Record<string, string> = {
+      electrician: 'كهربائي',
+      plumber: 'سباك',
+      carpenter: 'نجار',
+      painter: 'دهّان',
+      welder: 'لحّام',
+      mechanic: 'ميكانيكي',
+      mason: 'بنّاء',
+      tiler: 'فني بلاط',
+      roofer: 'سقّاف',
+      hvac: 'فني تكييف',
+      'hvac technician': 'فني تكييف',
+      technician: 'فني',
+    };
+    return dict[s] || val;
+  };
 
   const [rows, setRows] = useState<Row[]>([]);
   const [search, setSearch] = useState('');
@@ -43,7 +64,7 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
     try {
       const r = await adminGetUsers({ role: 'Technician' });
       if (r.ok && r.data && Array.isArray((r.data as any).items)) {
-        const list = (r.data as any).items.map((u:any) => ({
+        const list = (r.data as any).items.map((u: any) => ({
           id: String(u.id),
           name: u.name || '',
           email: u.email || '',
@@ -83,13 +104,13 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
     try {
       const r = await approveTechnician(u.id);
       if (r.ok) await load();
-    } catch {}
+    } catch { }
   };
   const suspend = async (u: Row) => {
     try {
       const r = await suspendTechnician(u.id);
       if (r.ok) await load();
-    } catch {}
+    } catch { }
   };
 
   return (
@@ -115,9 +136,9 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="relative">
                 <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input placeholder={isAr ? 'ابحث بالاسم أو البريد أو الهاتف' : 'Search by name, email or phone'} value={search} onChange={e=>setSearch(e.target.value)} className="pr-10" />
+                <Input placeholder={isAr ? 'ابحث بالاسم أو البريد أو الهاتف' : 'Search by name, email or phone'} value={search} onChange={e => setSearch(e.target.value)} className="pr-10" />
               </div>
-              <Select value={status} onValueChange={(v:any)=>setStatus(v)}>
+              <Select value={status} onValueChange={(v: any) => setStatus(v)}>
                 <SelectTrigger><SelectValue placeholder={isAr ? 'الحالة' : 'Status'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{isAr ? 'الكل' : 'All'}</SelectItem>
@@ -143,8 +164,8 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
                     <div className="space-y-1 w-full min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-medium break-words max-w-full leading-snug">{u.name}</h3>
-                        <Badge variant={u.status==='active'?'default': u.status==='pending'? 'secondary':'destructive'}>
-                          {u.status==='active'? (isAr?'نشط':'Active') : u.status==='pending' ? (isAr?'قيد المراجعة':'Pending') : (isAr?'معلق':'Suspended')}
+                        <Badge variant={u.status === 'active' ? 'default' : u.status === 'pending' ? 'secondary' : 'destructive'}>
+                          {u.status === 'active' ? (isAr ? 'نشط' : 'Active') : u.status === 'pending' ? (isAr ? 'قيد المراجعة' : 'Pending') : (isAr ? 'معلق' : 'Suspended')}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
@@ -155,18 +176,18 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={()=> openView(u.id)}><Eye className="h-4 w-4" /></Button>
-                    {u.status==='active' ? (
-                      <Button size="sm" variant="outline" onClick={()=> suspend(u)}><Ban className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="outline" onClick={() => openView(u.id)}><Eye className="h-4 w-4" /></Button>
+                    {u.status === 'active' ? (
+                      <Button size="sm" variant="outline" onClick={() => suspend(u)}><Ban className="h-4 w-4" /></Button>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={()=> approve(u)}><CheckCircle className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="outline" onClick={() => approve(u)}><CheckCircle className="h-4 w-4" /></Button>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-            {filtered.length===0 && (
-              <div className="text-center py-8 text-muted-foreground">{isAr? 'لا توجد نتائج' : 'No results'}</div>
+            {filtered.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">{isAr ? 'لا توجد نتائج' : 'No results'}</div>
             )}
           </CardContent>
         </Card>
@@ -200,11 +221,11 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
                 </div>
                 <div>
                   <Label className="text-muted-foreground">{isAr ? 'تاريخ الإنشاء' : 'Created at'}</Label>
-                  <div>{detail.createdAt ? String(detail.createdAt).replace('T',' ').slice(0,16) : '-'}</div>
+                  <div>{detail.createdAt ? String(detail.createdAt).replace('T', ' ').slice(0, 16) : '-'}</div>
                 </div>
                 <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={()=> setDetailOpen(false)}>{isAr ? 'إغلاق' : 'Close'}</Button>
-                  <Button onClick={()=> { if (detail) approve(detail); setDetailOpen(false); }}>{isAr ? 'موافقة' : 'Approve'}</Button>
+                  <Button variant="outline" onClick={() => setDetailOpen(false)}>{isAr ? 'إغلاق' : 'Close'}</Button>
+                  <Button onClick={() => { if (detail) approve(detail); setDetailOpen(false); }}>{isAr ? 'موافقة' : 'Approve'}</Button>
                 </div>
               </div>
             )}
@@ -213,82 +234,63 @@ export default function AdminTechnicians({ setCurrentPage, ...context }: Partial
 
         {/* Full user view */}
         <Dialog open={viewOpen} onOpenChange={setViewOpen}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{isAr ? 'تفاصيل الفني' : 'Technician Details'}</DialogTitle>
+          <DialogContent className="w-[95vw] sm:w-[640px] md:w-[800px] lg:w-[960px] xl:w-[1024px] max-w-none max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="text-center">
+              <DialogTitle className="w-full text-center">{t('technicianDetails') || (isAr ? 'تفاصيل الفني' : 'Technician Details')}</DialogTitle>
             </DialogHeader>
-            {viewLoading && (<div className="text-sm text-muted-foreground">{isAr?'جارٍ التحميل...':'Loading...'}</div>)}
-            {viewError && (<div className="text-sm text-red-600">{viewError}</div>)}
-            {viewUser && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-sm">
-                <div className="lg:col-span-1 space-y-4">
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'الصورة الشخصية':'Profile picture'}</Label>
-                    <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                      {viewUser.profilePicture ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={viewUser.profilePicture} alt="profile" className="max-h-full max-w-full object-contain" />
-                      ) : (<span className="text-xs text-muted-foreground">—</span>)}
+            <div className="max-h-[70vh] overflow-y-auto pr-1">
+              {viewLoading && (<div className="text-sm text-muted-foreground">{isAr ? 'جارٍ التحميل...' : 'Loading...'}</div>)}
+              {viewError && (<div className="text-sm text-red-600">{viewError}</div>)}
+              {viewUser && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-sm">
+                  <div className="lg:col-span-1 space-y-4">
+                    <div>
+                      <Label className="text-muted-foreground">{isAr ? 'الهوية' : 'ID'}</Label>
+                      <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                        {(() => {
+                          const url = (viewUser.licenseImagePath || viewUser.documentPath || '').toLowerCase();
+                          const isImg = /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(url);
+                          if ((viewUser.licenseImagePath || viewUser.documentPath) && isImg) {
+                            // eslint-disable-next-line @next/next/no-img-element
+                            return <img src={(viewUser.licenseImagePath || viewUser.documentPath)!} alt="doc" className="max-h-full max-w-full object-contain" />;
+                          }
+                          if (viewUser.licenseImagePath || viewUser.documentPath) {
+                            return <a className="text-primary underline" href={(viewUser.licenseImagePath || viewUser.documentPath)!} target="_blank" rel="noreferrer">{isAr ? 'عرض/تنزيل' : 'Open/Download'}</a>;
+                          }
+                          return <span className="text-xs text-muted-foreground">—</span>;
+                        })()}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'صورة الرخصة / المستند':'License / Document'}</Label>
-                    <div className="mt-2 w-full h-56 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                      {(() => {
-                        const url = (viewUser.licenseImagePath || viewUser.documentPath || '').toLowerCase();
-                        const isImg = /(\.png|\.jpg|\.jpeg|\.webp|\.gif)$/i.test(url);
-                        if ((viewUser.licenseImagePath || viewUser.documentPath) && isImg) {
-                          // eslint-disable-next-line @next/next/no-img-element
-                          return <img src={(viewUser.licenseImagePath || viewUser.documentPath)!} alt="doc" className="max-h-full max-w-full object-contain" />;
-                        }
-                        if (viewUser.licenseImagePath || viewUser.documentPath) {
-                          return <a className="text-primary underline" href={(viewUser.licenseImagePath || viewUser.documentPath)!} target="_blank" rel="noreferrer">{isAr?'عرض/تنزيل':'Open/Download'}</a>;
-                        }
-                        return <span className="text-xs text-muted-foreground">—</span>;
-                      })()}
+                  <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-muted-foreground">{isAr ? 'الاسم' : 'Name'}</Label>
+                      <div className="font-medium">{viewUser.name}</div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">Email</Label>
+                      <div>{viewUser.email}</div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">{isAr ? 'الهاتف' : 'Phone'}</Label>
+                      <div>{viewUser.phoneNumber}</div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">{isAr?'المهنة':'Profession'}</Label>
+                      <div>{isAr ? mapProfessionAr(viewUser.profession) : (viewUser.profession || '—')}</div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-muted-foreground">{isAr ? 'العنوان' : 'Address'}</Label>
+                      <div>{viewUser.address || '—'}</div>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">IBAN</Label>
+                      <div dir="ltr">{viewUser.iban || '—'}</div>
                     </div>
                   </div>
                 </div>
-                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'الاسم':'Name'}</Label>
-                    <div className="font-medium">{viewUser.name}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Email</Label>
-                    <div>{viewUser.email}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'الهاتف':'Phone'}</Label>
-                    <div>{viewUser.phoneNumber}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'الأدوار':'Roles'}</Label>
-                    <div>{(viewUser.roles || []).join(', ')}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'المهنة':'Profession'}</Label>
-                    <div>{viewUser.profession || '—'}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'رقم الرخصة':'License No.'}</Label>
-                    <div>{viewUser.licenseNumber || '—'}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">{isAr?'المدينة / الدولة':'City / Country'}</Label>
-                    <div>{[viewUser.city, viewUser.country].filter(Boolean).join(' / ') || '—'}</div>
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label className="text-muted-foreground">{isAr?'العنوان':'Address'}</Label>
-                    <div>{viewUser.address || '—'}</div>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">IBAN</Label>
-                    <div dir="ltr">{viewUser.iban || '—'}</div>
-                  </div>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>

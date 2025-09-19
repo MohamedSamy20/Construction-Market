@@ -118,6 +118,22 @@ export default function Router() {
   const [verificationRecheckedAt, setVerificationRecheckedAt] = useState<number>(0);
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  // Detect if there is any auth token present (localStorage/sessionStorage/cookies)
+  const hasAuthToken = () => {
+    try {
+      if (typeof window === 'undefined') return false;
+      const keys = ['auth_token', 'token', 'access_token', 'jwt', 'userToken', 'Authorization'];
+      for (const k of keys) {
+        const v = window.localStorage?.getItem(k) || window.sessionStorage?.getItem(k);
+        if (v && String(v).length > 0) return true;
+      }
+      const cookies = document.cookie.split('; ');
+      for (const k of keys) {
+        if (cookies.find((r) => r.startsWith(`${k}=`))) return true;
+      }
+      return false;
+    } catch { return false; }
+  };
   // Helper: normalize base product id from any value or composite id. Returns '' if invalid.
   const normalizeBaseId = (val: any): string => {
     try {
@@ -259,10 +275,11 @@ export default function Router() {
     (async () => { try { await apiClearCart(); } catch {} })();
   };
 
-  // Always load cart from backend (works for guests via cookie and authenticated users)
+  // Load cart from backend only when authenticated (avoid 401 noise for guests)
   useEffect(() => {
     (async () => {
       try {
+        if (!user) return; // guest: keep empty cart client-side
         const r = await apiGetCart();
         if (r.ok && r.data && Array.isArray(r.data.items)) {
           const baseItems = r.data.items
@@ -495,10 +512,16 @@ export default function Router() {
     setSessionChecked(true);
   }, []);
 
-  // Try to fetch profile from backend using cookies (no dependency on localStorage token)
+  // Try to fetch profile only if we have some token; otherwise treat as guest to avoid 401 spam
   useEffect(() => {
     (async () => {
       if (!sessionChecked) return;
+      // If there is no token at all, skip network call and mark as guest
+      if (!hasAuthToken()) {
+        setUser(null);
+        setAuthChecked(true);
+        return;
+      }
       try {
         const r = await getProfile();
         if (r.ok && r.data) {

@@ -8,15 +8,43 @@ export async function protect(req, res, next) {
     if (auth && String(auth).startsWith('Bearer ')) {
       token = String(auth).slice(7);
     }
-    if (!token && req.cookies && req.cookies.auth_token) {
-      token = req.cookies.auth_token;
+    // Accept several cookie names commonly used
+    if (!token && req.cookies) {
+      token = req.cookies.auth_token
+        || req.cookies.token
+        || req.cookies.access_token
+        || req.cookies.Authorization;
     }
-    if (!token) return res.status(401).json({ success: false, message: 'Not authorized, token missing' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme-secret');
-    req.user = await User.findById(decoded.id).select('-password');
+    if (!token) {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+      return res.status(401).json({ success: false, message: 'Not authorized: token missing' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'changeme-secret');
+    } catch (e) {
+      const name = e?.name || '';
+      if (name === 'TokenExpiredError') {
+        res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token", error_description="token expired"');
+        return res.status(401).json({ success: false, message: 'Token expired' });
+      }
+      if (name === 'JsonWebTokenError') {
+        res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token"');
+        return res.status(401).json({ success: false, message: 'Invalid token' });
+      }
+      return res.status(401).json({ success: false, message: 'Not authorized' });
+    }
+
+    try {
+      req.user = await User.findById(decoded.id).select('-password');
+    } catch {
+      req.user = null;
+    }
     if (!req.user) return res.status(401).json({ success: false, message: 'User not found' });
     next();
   } catch (err) {
+    // Ensure we never crash on auth errors
     return res.status(401).json({ success: false, message: 'Not authorized' });
   }
 }

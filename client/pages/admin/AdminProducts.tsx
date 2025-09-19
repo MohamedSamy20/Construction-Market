@@ -26,7 +26,8 @@ interface ProductRow {
 }
 
 export default function AdminProducts({ setCurrentPage, ...context }: Partial<RouteContext>) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isAr = locale === 'ar';
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [search, setSearch] = useState('');
   // status filter disabled (no backend field). Keep UI minimal
@@ -152,7 +153,24 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
       isAvailableForRent: false,
       rentPricePerDay: null,
       attributes: [],
-      images: Array.isArray(data.images) ? data.images : (data.image ? [data.image] : []),
+      // Persist structured details
+      specifications: data.specifications || undefined,
+      compatibility: Array.isArray(data.compatibility) ? data.compatibility : undefined,
+      // Installation add-on
+      addonInstallation: data.addonInstallation || {
+        enabled: !!data.addonInstallEnabled,
+        feePerUnit: Number(data.addonInstallFee || 0),
+      },
+      // Identifiers
+      partNumber: String(data.partNumber || ''),
+      // Images: ensure array of strings with main image first
+      images: (() => {
+        const arr: string[] = Array.isArray(data.images) ? data.images : [];
+        const main: string = data.image || arr[0] || '';
+        const all = [main, ...arr].filter(Boolean);
+        // de-dup while preserving order
+        return Array.from(new Set(all));
+      })(),
     };
     if (editId) {
       const idToUpdate = selectedBackendId || String(editId);
@@ -196,7 +214,7 @@ export default function AdminProducts({ setCurrentPage, ...context }: Partial<Ro
             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <div className="relative md:col-span-2">
                 <Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input placeholder={t('searchByNameSkuOrStore')} value={search} onChange={e=>setSearch(e.target.value)} className="pr-10" />
+                <Input placeholder={isAr ? 'ابحث بالاسم ' : 'Search by name '} value={search} onChange={e=>setSearch(e.target.value)} className="pr-10" />
               </div>
               <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />{t('addProduct')}</Button>
             </div>
