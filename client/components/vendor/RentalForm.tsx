@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -187,7 +188,7 @@ export default function RentalForm({ product, onSave, onCancel }: RentalFormProp
               <div className="mt-2 w-full h-44 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 {formData.image ? (
-                  <img src={formData.image} alt="preview" className="max-h-full object-contain" />
+                  <Image src={formData.image} alt="preview" className="max-h-full object-contain" width={200} height={176} />
                 ) : (
                   <span className="text-xs text-muted-foreground">لا توجد صورة بعد</span>
                 )}

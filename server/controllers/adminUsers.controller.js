@@ -104,5 +104,51 @@ export async function adminDeleteUser(req, res) {
 export async function adminGetUserById(req, res) {
   const u = await User.findById(req.params.id);
   if (!u) return res.status(404).json({ success: false, message: 'User not found' });
-  res.json({ success: true, item: mapUser(u) });
+  // Return full details needed by the admin UI
+  const item = {
+    id: String(u._id),
+    name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
+    email: u.email || null,
+    phoneNumber: u.phoneNumber || null,
+    phoneSecondary: u.phoneSecondary || null,
+    roles: [u.role].filter(Boolean),
+    isActive: !!u.isActive,
+    isVerified: !!u.isVerified,
+    createdAt: u.createdAt ? u.createdAt.toISOString() : null,
+    companyName: u.companyName || null,
+    city: u.city || null,
+    country: u.country || null,
+    firstName: u.firstName || null,
+    middleName: u.middleName || null,
+    lastName: u.lastName || null,
+    taxNumber: u.taxNumber || u.vatNumber || u.taxId || u.tax_id || null,
+    profession: u.profession || null,
+    iban: u.iban || u.IBAN || u.ibanNumber || null,
+    registryStart: u.registryStart || u.registryStartDate || u.commercialRegisterStart || null,
+    registryEnd: u.registryEnd || u.registryEndDate || u.commercialRegisterEnd || null,
+    address: u.address || null,
+    buildingNumber: u.buildingNumber || null,
+    streetName: u.streetName || null,
+    postalCode: u.postalCode || null,
+    dateOfBirth: u.dateOfBirth ? (u.dateOfBirth.toISOString ? u.dateOfBirth.toISOString() : String(u.dateOfBirth)) : null,
+    // Media fields (both canonical and aliases for frontend compatibility)
+    profilePicture: u.profilePicture || null,
+    profileImageUrl: u.profileImageUrl || u.profilePictureUrl || null,
+    imageUrl: u.imageUrl || u.photoUrl || null,
+    documentUrl: u.documentUrl || u.document || null,
+    documentPath: u.documentUrl || u.documentPath || u.document || null,
+    licenseImageUrl: u.licenseImageUrl || u.licenseImage || null,
+    licenseImagePath: u.licenseImageUrl || u.licenseImagePath || u.licenseImage || null,
+    documents: Array.isArray(u.documents)
+      ? u.documents.map(d => ({
+          url: d?.url || null,
+          path: d?.path || null,
+          name: d?.name || null,
+          type: d?.type || null,
+        }))
+      : [],
+    rating: null,
+    reviewCount: null,
+  };
+  res.json({ success: true, item });
 }

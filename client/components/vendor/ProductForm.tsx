@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
+import Image from 'next/image';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -7,7 +8,6 @@ import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { getAdminProductOptions } from '../../lib/adminOptions';
 import { Checkbox } from '../ui/checkbox';
-import { Switch } from '../ui/switch';
 import { DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getCommissionRates } from '@/services/commissions';
 import { toastError } from '../../utils/alerts';
@@ -24,43 +24,81 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
   const adminCategories = getAdminProductOptions().categories;
   // Do NOT use fallback IDs for backend submission; require real categories from server
   const categoryList: Array<{ id: number | string; name: string }> = Array.isArray(categories) ? categories : [];
-  const [formData, setFormData] = useState({
-    // Localized fields
-    nameAr: product?.nameAr || product?.name || '',
-    nameEn: product?.nameEn || '',
-    // Backend category id
-    categoryId: (product?.categoryId ?? (categoryList[0]?.id ?? '')) as number | string,
-    subCategoryAr: (product as any)?.subCategoryAr || (typeof (product as any)?.subCategory === 'string' ? (product as any)?.subCategory : (product as any)?.subCategory?.ar) || '',
-    subCategoryEn: (product as any)?.subCategoryEn || (typeof (product as any)?.subCategory === 'string' ? (product as any)?.subCategory : (product as any)?.subCategory?.en) || '',
-    price: product?.price ?? '',
-    originalPrice: product?.originalPrice ?? '',
-    stock: product?.stock ?? 0,
-    inStock: product?.inStock ?? (Number(product?.stock ?? 0) > 0),
-    partNumber: product?.partNumber || '',
-    // Part location (A/B/C)
-    partLocation: (product as any)?.partLocation || '',
-    // Localized descriptions
-    descriptionAr: product?.descriptionAr || '',
-    descriptionEn: product?.descriptionEn || '',
-    image: product?.image || '',
-    images: (product as any)?.images || (product?.image ? [product.image] : []),
-    _files: [] as File[],
-    isNew: product?.isNew || false,
-    isOnSale: product?.isOnSale || false,
-    isActive: product?.isActive || product?.status === 'active' || false,
-    // Product details tabs data
-    specificationsEntries: Object.entries(((product as any)?.specifications) || {}).map(([key, value]: [string, any]) => ({
+  // Normalize incoming product from backend into the form shape
+  const normalizeProduct = (p?: any) => {
+    const catId = p?.categoryId ?? p?.category?._id ?? p?.category?.id ?? categoryList[0]?.id ?? '';
+    // Coerce numeric-like fields to digit-only strings for controlled inputs
+    const priceCurrentRaw = p?.discountPrice ?? p?.currentPrice ?? p?.price ?? p?.sellPrice ?? p?.finalPrice ?? '';
+    const priceOriginalRaw = p?.discountPrice != null && p?.discountPrice !== ''
+      ? (p?.price ?? p?.originalPrice ?? '')
+      : (p?.originalPrice ?? '');
+    const toDigits = (v: any) => String(v ?? '').replace(/[^0-9]/g, '');
+    const priceCurrent = toDigits(priceCurrentRaw);
+    const priceOriginal = toDigits(priceOriginalRaw);
+    const stockQtyRaw = p?.stockQuantity ?? p?.stock ?? 0;
+    const stockQty = toDigits(stockQtyRaw);
+    // Images: support various backend shapes and keys
+    const imgsRaw = Array.isArray(p?.images) ? p.images : (Array.isArray(p?.gallery) ? p.gallery : []);
+    const coerceUrl = (it: any): string => {
+      if (!it) return '';
+      if (typeof it === 'string') return it;
+      const pick = (v: any): string => (typeof v === 'string' ? v : (typeof v === 'object' && v !== null ? (typeof v.url === 'string' ? v.url : (typeof v.secure_url === 'string' ? v.secure_url : '')) : ''));
+      const url = pick(it.imageUrl) || pick(it.imageURL) || pick(it.url) || pick(it.secure_url) || pick(it.path) || pick(it.src);
+      return typeof url === 'string' ? url : '';
+    };
+    const images: string[] = imgsRaw
+      .map((it: any) => coerceUrl(it))
+      .filter((u: any): u is string => typeof u === 'string' && !!u);
+    const image = (typeof p?.image === 'string' ? p?.image : coerceUrl(p?.image)) || images[0] || '';
+    const specsObj: Record<string, any> = (p?.specifications && typeof p.specifications === 'object') ? p.specifications : {};
+    const specificationsEntries = Object.entries(specsObj).map(([key, value]: [string, any]) => ({
       key,
       value: typeof value === 'object' && value !== null ? (value.ar ?? value.en ?? String(value)) : String(value)
-    })),
-    compatibilityList: Array.isArray((product as any)?.compatibility)
-      ? ((product as any)?.compatibility as any[]).map((c: any) => (typeof c === 'object' && c !== null ? (c.ar ?? c.en ?? '') : String(c)))
-      : [],
-    // Vendor-defined installation option
-    addonInstallEnabled: product?.addonInstallEnabled || (product as any)?.addonInstallation?.enabled || false,
-    addonInstallFee: (product?.addonInstallFee ?? (product as any)?.addonInstallation?.feePerUnit) ?? 50,
-    ...product
-  });
+    }));
+    const compatibilityList = Array.isArray(p?.compatibility)
+      ? (p.compatibility as any[]).map((c: any) => (typeof c === 'object' && c !== null ? (c.ar ?? c.en ?? '') : String(c)))
+      : [];
+    return {
+      // Preserve unknown fields, but allow normalized fields below to override
+      ...(p || {}),
+      // Localized fields
+      nameAr: p?.nameAr || p?.name || '',
+      nameEn: p?.nameEn || '',
+      // Backend category id
+      categoryId: catId as number | string,
+      subCategoryAr: (p as any)?.subCategoryAr || (typeof (p as any)?.subCategory === 'string' ? (p as any)?.subCategory : (p as any)?.subCategory?.ar) || '',
+      subCategoryEn: (p as any)?.subCategoryEn || (typeof (p as any)?.subCategory === 'string' ? (p as any)?.subCategory : (p as any)?.subCategory?.en) || '',
+      price: priceCurrent,
+      originalPrice: priceOriginal,
+      stock: stockQty,
+      inStock: p?.inStock ?? (Number(stockQty) > 0),
+      partNumber: p?.partNumber || '',
+      // Part location (A/B/C)
+      partLocation: (p as any)?.partLocation || '',
+      // Localized descriptions
+      descriptionAr: p?.descriptionAr || '',
+      descriptionEn: p?.descriptionEn || '',
+      image,
+      images,
+      _files: [] as File[],
+      isNew: p?.isNew || false,
+      isOnSale: p?.isOnSale || false,
+      isActive: p?.isActive || p?.status === 'active' || false,
+      specificationsEntries,
+      compatibilityList,
+      // Vendor-defined installation option
+      addonInstallEnabled: p?.addonInstallEnabled || (p as any)?.addonInstallation?.enabled || false,
+      addonInstallFee: (p?.addonInstallFee ?? (p as any)?.addonInstallation?.feePerUnit) ?? 50,
+    };
+  };
+
+  const [formData, setFormData] = useState(normalizeProduct(product));
+
+  // If product prop changes (e.g., after fetching by id), refresh the form
+  useEffect(() => {
+    setFormData(normalizeProduct(product));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Commission preview from backend
   const [commissionPct, setCommissionPct] = useState<number>(10);
@@ -114,11 +152,11 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
       inStock: stockNum > 0,
       image: main,
       images: uniqueImages,
-      subCategory: { ar: formData.subCategoryAr || '', en: formData.subCategoryEn || '' },
-      status: formData.isActive ? 'active' : 'draft',
+      // subCategory removed
+      // status removed
       specifications: specsObj,
       compatibility: compatibilityArr,
-      partLocation: (formData as any)?.partLocation || '',
+      // partLocation removed
       // normalize addon object as well
       addonInstallation: { enabled: !!formData.addonInstallEnabled, feePerUnit: Number(formData.addonInstallFee || 0) },
       id: product?.id || Date.now().toString()
@@ -166,25 +204,9 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
             )}
           </div>
 
-          <div>
-            <Label htmlFor="subCategoryAr">النوع الفرعي (عربي)</Label>
-            <Input id="subCategoryAr" value={formData.subCategoryAr} onChange={(e) => setFormData({ ...formData, subCategoryAr: e.target.value })} placeholder="مثال: باب خشبي / شباك الوميتال" />
-          </div>
-          <div>
-            <Label htmlFor="subCategoryEn">النوع الفرعي (إنجليزي)</Label>
-            <Input id="subCategoryEn" value={formData.subCategoryEn} onChange={(e) => setFormData({ ...formData, subCategoryEn: e.target.value })} placeholder="e.g., Wooden Door / Aluminum Window" />
-          </div>
+          {/* Subcategory fields removed per admin request */}
 
-          {/* Part location - free text input */}
-          <div className="md:col-span-2">
-            <Label htmlFor="partLocation" className="block mb-2">مكان القطعة</Label>
-            <Input
-              id="partLocation"
-              placeholder="مثال: يمين أمامي / يسار خلفي / أمام السيارة ..."
-              value={(formData as any)?.partLocation || ''}
-              onChange={(e) => setFormData({ ...formData, partLocation: e.target.value })}
-            />
-          </div>
+          {/* Part location removed per admin request */}
 
           <div>
             <Label htmlFor="price">السعر الحالي</Label>
@@ -258,8 +280,8 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
                 <Label className="text-sm text-muted-foreground">الصورة الرئيسية (ستظهر في القائمة والتفاصيل)</Label>
                 <div className="mt-2 w-full h-44 rounded-md border overflow-hidden bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {formData.image ? (
-                    <img src={formData.image} alt="preview" className="max-h-full object-contain" />
+                  {formData.image && typeof formData.image === 'string' ? (
+                    <Image src={typeof formData.image === 'string' ? formData.image : ''} alt="preview" className="max-h-full object-contain" width={200} height={176} />
                   ) : (
                     <span className="text-xs text-muted-foreground">لا توجد صورة بعد</span>
                   )}
@@ -272,7 +294,7 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
             <div className="mt-3">
               <Label className="text-sm text-muted-foreground">صور إضافية</Label>
               <div className="mt-2 flex flex-wrap gap-2">
-                {(formData.images as string[] || []).map((src, idx) => (
+                {((formData.images as any[]) || []).map((src, idx) => (
                   <div key={idx} className={`relative w-16 h-16 border rounded overflow-hidden bg-white dark:bg-gray-800 ${formData.image===src ? 'ring-2 ring-primary' : ''}`}>
                     <button
                       type="button"
@@ -301,7 +323,7 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
                       title={formData.image===src ? 'الصورة الرئيسية' : 'تعيين كصورة رئيسية'}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`thumb-${idx}`} className="max-h-full object-contain" />
+                      <img src={typeof src === 'string' ? src : ''} alt={`thumb-${idx}`} className="max-h-full object-contain" />
                     </button>
                   </div>
                 ))}
@@ -415,20 +437,7 @@ export default function ProductForm({ product, onSave, onCancel, categories = []
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="flex items-center space-x-2 space-x-reverse">
-          <Switch id="isActive" checked={formData.isActive} onCheckedChange={(checked: boolean) => setFormData({ ...formData, isActive: checked })} />
-          <Label htmlFor="isActive">نشر المنتج فوراً</Label>
-        </div>
-        <div className="flex items-center space-x-2 space-x-reverse">
-          <Switch id="isNew" checked={formData.isNew} onCheckedChange={(checked: boolean) => setFormData({ ...formData, isNew: checked })} />
-          <Label htmlFor="isNew">منتج جديد</Label>
-        </div>
-        <div className="flex items-center space-x-2 space-x-reverse">
-          <Switch id="isOnSale" checked={formData.isOnSale} onCheckedChange={(checked: boolean) => setFormData({ ...formData, isOnSale: checked })} />
-          <Label htmlFor="isOnSale">عليه عرض</Label>
-        </div>
-      </div>
+      {/* Publish/New/OnSale switches removed per admin request */}
 
         {/* Installation option controlled by vendor */}
         <div className="space-y-3">

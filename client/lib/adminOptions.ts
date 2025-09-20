@@ -3,7 +3,6 @@ export type AdminProductOptions = {
 };
 
 const PRODUCT_OPTIONS_KEY = 'admin_product_options_v1';
-const SERVICE_OPTIONS_KEY = 'admin_service_options_v1';
 const TECHNICIAN_OPTIONS_KEY = 'admin_technician_options_v1';
 const RENTAL_OPTIONS_KEY = 'admin_rental_options_v1';
 
@@ -25,14 +24,6 @@ function write<T>(key: string, value: T) {
 
 const DEFAULT_PRODUCT_OPTIONS: AdminProductOptions = {
   categories: ['أبواب', 'نوافذ'],
-};
-
-export type AdminServiceOptions = {
-  categories: string[];
-};
-
-const DEFAULT_SERVICE_OPTIONS: AdminServiceOptions = {
-  categories: ['صيانة عامة', 'كهرباء', 'ميكانيكا'],
 };
 
 export type AdminTechnicianOptions = {
@@ -68,22 +59,6 @@ export function saveAdminProductOptions(opts: AdminProductOptions) {
   try { window.dispatchEvent(new Event('admin_options_updated')); } catch {}
 }
 
-export function getAdminServiceOptions(): AdminServiceOptions {
-  const v = read<AdminServiceOptions>(SERVICE_OPTIONS_KEY);
-  if (!v) return { ...DEFAULT_SERVICE_OPTIONS };
-  const categories = Array.isArray(v.categories) && v.categories.length ? v.categories : DEFAULT_SERVICE_OPTIONS.categories;
-  return { categories: categories.map(c => String(c)) };
-}
-
-export function saveAdminServiceOptions(opts: AdminServiceOptions) {
-  const normalized: AdminServiceOptions = {
-    categories: Array.isArray(opts.categories)
-      ? Array.from(new Set(opts.categories.map((s) => String(s).trim()).filter(Boolean)))
-      : []
-  };
-  write(SERVICE_OPTIONS_KEY, normalized);
-  try { window.dispatchEvent(new Event('admin_options_updated')); } catch {}
-}
 
 export function getAdminTechnicianOptions(): AdminTechnicianOptions {
   const v = read<AdminTechnicianOptions>(TECHNICIAN_OPTIONS_KEY);

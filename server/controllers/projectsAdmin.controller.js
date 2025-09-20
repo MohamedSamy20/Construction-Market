@@ -56,3 +56,30 @@ export async function listBids(req, res) {
   const items = await Bid.find({ projectId: req.params.id }).sort({ createdAt: -1 });
   res.json({ success: true, items });
 }
+
+export async function deleteProject(req, res) {
+  const id = req.params.id;
+  const p = await Project.findByIdAndDelete(id);
+  if (!p) return res.status(404).json({ success: false, message: 'Project not found' });
+
+  // Delete associated bids
+  try {
+    await Bid.deleteMany({ projectId: id });
+  } catch {}
+
+  // Notify customer if exists
+  try {
+    if (p.customerId) {
+      await Notification.create({
+        userId: p.customerId,
+        role: 'customer',
+        type: 'project.deleted',
+        title: 'Project deleted',
+        message: 'Your project has been deleted by admin.',
+        data: { projectId: String(p._id) },
+      });
+    }
+  } catch {}
+
+  res.json({ success: true, message: 'Project deleted successfully' });
+}

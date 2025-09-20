@@ -113,7 +113,7 @@ export async function updateProject(id: string | number, payload: CreateProjectD
 }
 
 export async function deleteProject(id: string | number) {
-  return api.del<{ success: boolean }>(`/api/Projects/${encodeURIComponent(String(id))}`, { auth: true });
+  return api.del<{ success: boolean }>(`/api/ProjectsAdmin/${encodeURIComponent(String(id))}`, { auth: true });
 }
 
 export async function getMyProjects() {

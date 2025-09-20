@@ -83,7 +83,9 @@ export default function BestSellingProducts({ setSelectedProduct, setCurrentPage
         {!loading && products.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {products.map((product, idx) => (
-            <Card key={`${String(product.id ?? product.name ?? 'item')}-${idx}`} className="group hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer" onClick={() => handleProductClick(product)}>
+
+            <Card key={`product-${product.id ?? (product.nameEn ?? product.name) ?? 'noid'}-${idx}`} className="group hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer" onClick={() => handleProductClick(product)}>
+
               <div className="relative">
                 <div className="relative h-48 overflow-hidden">
                   {product.image ? (

@@ -53,9 +53,6 @@ import VendorProjectDetails from '../pages/vendor/VendorProjectDetails';
 import VendorServiceApplicants from '../pages/vendor/VendorServiceApplicants';
 import VendorChat from '../pages/vendor/VendorChat';
 
-// Import marketer dashboard components
-// Marketer role removed
-
 // Import admin dashboard components
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import AdminUsers from '../pages/admin/AdminUsers';
@@ -64,17 +61,15 @@ import AdminProducts from '../pages/admin/AdminProducts';
 import AdminReports from '../pages/admin/AdminReports';
 import AdminSections from '../pages/admin/AdminSections';
 import AdminProductOptions from '../pages/admin/AdminProductOptions';
-import AdminServiceOptions from '../pages/admin/AdminServiceOptions';
 import AdminTechnicianOptions from '../pages/admin/AdminTechnicianOptions';
 import AdminTechnicians from '../pages/admin/AdminTechnicians';
-import AdminRentalOptions from '../pages/admin/AdminRentalOptions';
 import AdminProjectOptions from '../pages/admin/AdminProjectOptions';
 import AdminPendingProjects from '../pages/admin/AdminPendingProjects';
 import AdminAllProjects from '../pages/admin/AdminAllProjects';
 import AdminProjectDetails from '../pages/admin/AdminProjectDetails';
-
 import AdminRentals from '../pages/admin/AdminRentals';
 import AdminOffers from '../pages/admin/AdminOffers';
+
 // Technician pages
 import TechnicianServices from '../pages/technician/TechnicianServices';
 import TechnicianProjects from '../pages/technician/TechnicianProjects';
@@ -129,8 +124,6 @@ export const routes: Record<string, RouteConfig> = {
   'vendor-service-applicants': { component: VendorServiceApplicants, title: 'المتقدمون على الخدمات', icon: Users, requiresAuth: true, allowedRoles: ['vendor'] },
   'vendor-chat': { component: VendorChat, title: 'مراسلة الفني', icon: Users, requiresAuth: true, allowedRoles: ['vendor'] },
 
-  // Marketer routes removed
-
   // Admin routes (require admin role)
   'admin-dashboard': { component: AdminDashboard, title: 'لوحة التحكم الإدارية', icon: Shield, requiresAuth: true, allowedRoles: ['admin'] },
   'admin-users': { component: AdminUsers, title: 'إدارة المستخدمين', icon: Users, requiresAuth: true, allowedRoles: ['admin'] },
@@ -139,9 +132,7 @@ export const routes: Record<string, RouteConfig> = {
   'admin-reports': { component: AdminReports, title: 'Reports & Analytics', icon: BarChart3, requiresAuth: true, allowedRoles: ['admin'] },
   'admin-sections': { component: AdminSections, title: 'الأقسام', icon: Package, requiresAuth: true, allowedRoles: ['admin'] },
   'admin-sections-products': { component: AdminProductOptions, title: 'خيارات المنتجات', icon: Package, requiresAuth: true, allowedRoles: ['admin'] },
-  'admin-sections-services': { component: AdminServiceOptions, title: 'خيارات الخدمات', icon: Tag, requiresAuth: true, allowedRoles: ['admin'] },
   'admin-sections-technicians': { component: AdminTechnicianOptions, title: 'خيارات العمال', icon: Users, requiresAuth: true, allowedRoles: ['admin'] },
-  'admin-sections-rentals': { component: AdminRentalOptions, title: 'خيارات التأجير', icon: Truck, requiresAuth: true, allowedRoles: ['admin'] },
   // Admin project management
   'admin-project-options': { component: AdminProjectOptions, title: 'خيارات مشاريع (كتالوج)', icon: Settings, requiresAuth: true, allowedRoles: ['admin'] },
   'admin-pending-projects': { component: AdminPendingProjects, title: 'مشاريع قيد الاعتماد', icon: Shield, requiresAuth: true, allowedRoles: ['admin'] },

@@ -19,6 +19,11 @@ import bcrypt from 'bcryptjs';
 const router = express.Router();
 const adminOnly = [protect, requireRoles('Admin')];
 
+// Test endpoint
+router.get('/test', ...adminOnly, (req, res) => {
+  res.json({ success: true, message: 'Admin routes working', timestamp: new Date().toISOString() });
+});
+
 // Services moderation
 router.get('/services/pending', ...adminOnly, servicesPending);
 router.post('/services/:id/approve', ...adminOnly, servicesApprove);
@@ -26,12 +31,186 @@ router.post('/services/:id/reject', ...adminOnly, servicesReject);
 
 // Products moderation & management
 router.get('/products/pending', ...adminOnly, adminListPendingProducts);
+router.get('/products', ...adminOnly, async (req, res) => {
+  try {
+    const { page = 1, pageSize = 20, SearchTerm, CategoryId } = req.query;
+    const q = {}; // Admin can see all products (approved and pending)
+    
+    if (SearchTerm) {
+      q.$or = [
+        { nameEn: { $regex: SearchTerm, $options: 'i' } },
+        { nameAr: { $regex: SearchTerm, $options: 'i' } },
+      ];
+    }
+    if (CategoryId) q.categoryId = CategoryId;
+    
+    const skip = (Number(page) - 1) * Number(pageSize);
+    const [docs, totalCount] = await Promise.all([
+      Product.find(q)
+        .populate('merchantId', 'name firstName lastName companyName')
+        .populate('categoryId', 'nameEn nameAr')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(pageSize)),
+      Product.countDocuments(q),
+    ]);
+    
+    // Map MongoDB documents to ensure proper ID format and include populated data
+    const items = docs.map((doc, index) => {
+      const obj = doc.toObject();
+      const merchant = obj.merchantId;
+      const category = obj.categoryId;
+      
+      const mappedItem = {
+        ...obj,
+        id: String(doc._id),
+        merchantId: String(merchant?._id || merchant),
+        categoryId: String(category?._id || category),
+        merchantName: merchant?.name || merchant?.companyName || 
+                     [merchant?.firstName, merchant?.lastName].filter(Boolean).join(' ') || null,
+        categoryName: category?.nameEn || obj.categoryName || null,
+        categoryNameAr: category?.nameAr || null,
+      };
+      return mappedItem;
+    });
+    
+    res.json({ 
+      success: true, 
+      items, 
+      totalCount, 
+      page: Number(page), 
+      pageSize: Number(pageSize) 
+    });
+  } catch (error) {
+    console.error('Admin get products error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch products' });
+  }
+});
 router.post('/products/:id/approve', ...adminOnly, adminApproveProduct);
 router.post('/products/:id/reject', ...adminOnly, adminRejectProduct);
-// The below endpoints can be implemented later with full admin product management
-router.post('/products', ...adminOnly, (req, res) => res.status(201).json({ success: true }));
-router.put('/products/:id', ...adminOnly, (req, res) => res.json({ success: true }));
-router.post('/products/:id/discount', ...adminOnly, (req, res) => res.json({ success: true }));
+// Admin product management
+router.post('/products', ...adminOnly, async (req, res) => {
+  try {
+    const body = req.body || {};
+    body.merchantId = req.user._id;
+    body.isApproved = true; // Auto-approve admin-created products
+    body.approvedAt = new Date();
+    
+    if (body.categoryId) {
+      const { Category } = await import('../models/Category.js');
+      const cat = await Category.findById(body.categoryId);
+      if (cat) body.categoryName = cat.nameEn;
+    }
+    
+    const created = await Product.create(body);
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    console.error('Admin create product error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create product' });
+  }
+});
+
+router.put('/products/:id', ...adminOnly, async (req, res) => {
+  try {
+    const updates = req.body || {};
+    const productId = req.params.id;
+    
+    console.log('Updating product:', productId, 'Updates:', updates);
+    
+    // Validate product ID format
+    if (!productId || productId === 'undefined' || productId === 'null') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid product ID' 
+      });
+    }
+    
+    // Validate MongoDB ObjectId format
+    const mongoose = await import('mongoose');
+    if (!mongoose.default.isValidObjectId(productId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid MongoDB ObjectId format' 
+      });
+    }
+    
+    if (updates.categoryId) {
+      const { Category } = await import('../models/Category.js');
+      const cat = await Category.findById(updates.categoryId);
+      if (cat) updates.categoryName = cat.nameEn;
+    }
+    
+    const updated = await Product.findByIdAndUpdate(productId, updates, { new: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'Product not found' });
+    
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Admin update product error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update product' });
+  }
+});
+
+router.post('/products/:id/discount', ...adminOnly, async (req, res) => {
+  try {
+    const { discountPrice } = req.body || {};
+    const productId = req.params.id;
+    
+    console.log('Setting discount for product:', productId, 'Discount:', discountPrice);
+    
+    // Validate product ID format
+    if (!productId || productId === 'undefined' || productId === 'null') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid product ID' 
+      });
+    }
+    
+    // Validate MongoDB ObjectId format
+    const mongoose = await import('mongoose');
+    if (!mongoose.default.isValidObjectId(productId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid MongoDB ObjectId format' 
+      });
+    }
+    
+    // Validate discount price
+    if (discountPrice !== null && discountPrice !== undefined) {
+      if (typeof discountPrice !== 'number' || discountPrice < 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Discount price must be a positive number or null' 
+        });
+      }
+      
+      // Check if discount is less than original price
+      const product = await Product.findById(productId);
+      if (!product) {
+        return res.status(404).json({ success: false, message: 'Product not found' });
+      }
+      
+      if (discountPrice >= product.price) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Discount price must be less than original price' 
+        });
+      }
+    }
+    
+    const updated = await Product.findByIdAndUpdate(
+      productId, 
+      { discountPrice: discountPrice }, 
+      { new: true }
+    );
+    
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to set discount price' });
+  }
+});
 
 // Merchants moderation
 router.get('/merchants/pending', ...adminOnly, adminListPendingMerchants);
@@ -92,7 +271,6 @@ router.get('/users', ...adminOnly, async (req, res) => {
     }));
     return res.json({ success: true, items });
   } catch (err) {
-    console.warn('[admin] users list error:', err?.message || err);
     return res.json({ success: true, items: [] });
   }
 });
@@ -183,6 +361,7 @@ router.get('/users/:id', ...adminOnly, async (req, res) => {
       name: u.name || [u.firstName, u.lastName].filter(Boolean).join(' '),
       email: u.email || null,
       phoneNumber: u.phoneNumber || null,
+      phoneSecondary: u.phoneSecondary || null,
       roles: [u.role].filter(Boolean),
       isActive: !!u.isActive,
       isVerified: !!u.isVerified,
@@ -202,9 +381,21 @@ router.get('/users/:id', ...adminOnly, async (req, res) => {
       buildingNumber: u.buildingNumber || null,
       streetName: u.streetName || null,
       postalCode: u.postalCode || null,
+      dateOfBirth: u.dateOfBirth ? (u.dateOfBirth.toISOString ? u.dateOfBirth.toISOString() : String(u.dateOfBirth)) : null,
+      // Media fields (both canonical and aliases for frontend compatibility)
       profilePicture: u.profilePicture || null,
-      documentPath: u.documentUrl || null,
-      licenseImagePath: u.licenseImageUrl || null,
+      profileImageUrl: u.profileImageUrl || null,
+      imageUrl: u.imageUrl || null,
+      documentUrl: u.documentUrl || null,
+      documentPath: u.documentUrl || u.documentPath || null,
+      licenseImageUrl: u.licenseImageUrl || null,
+      licenseImagePath: u.licenseImageUrl || u.licenseImagePath || null,
+      documents: Array.isArray(u.documents) ? u.documents.map(d => ({
+        url: d?.url || null,
+        path: d?.path || null,
+        name: d?.name || null,
+        type: d?.type || null,
+      })) : [],
       rating: null,
       reviewCount: null,
     };

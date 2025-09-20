@@ -37,6 +37,14 @@ const productSchema = new mongoose.Schema({
   reviewCount: { type: Number, default: 0 },
   images: [productImageSchema],
   attributes: [productAttributeSchema],
+  // Persist vendor-defined addon installation option
+  addonInstallation: {
+    enabled: { type: Boolean, default: false },
+    feePerUnit: { type: Number, default: 0 },
+  },
+  // Optional structured details
+  specifications: { type: mongoose.Schema.Types.Mixed, default: {} },
+  compatibility: { type: [String], default: [] },
 }, { timestamps: true });
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

@@ -8,6 +8,7 @@ import { ImageWithFallback } from '../../components/figma/ImageWithFallback';
 import { useTranslation } from '../../hooks/useTranslation';
 import type { RouteContext } from '../../components/Router';
 import { getAllRentals, approveRental, declineRental, removeRentalAdmin } from '@/services/rentals';
+import { getAdminUserById } from '@/services/adminUsers';
 
 interface Props extends Partial<RouteContext> {}
 
@@ -17,7 +18,43 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
   const [loading, setLoading] = useState(true);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<any | null>(null);
+  const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
   const firstLoadRef = useRef(true);
+
+  const getStatusInArabic = (status: string): string => {
+    switch (status?.toLowerCase()) {
+      case 'pending': return 'قيد الانتظار';
+      case 'approved': return 'معتمد';
+      case 'active': return 'نشط';
+      case 'declined': return 'مرفوض';
+      case 'completed': return 'مكتمل';
+      default: return status?.toUpperCase() || 'غير محدد';
+    }
+  };
+
+  const getCurrencySymbol = (currency?: string): string => {
+    if (locale === 'ar') return 'ر.س';
+    return currency || 'SAR';
+  };
+
+  const fetchCustomerName = async (customerId: string) => {
+    if (customerNames[customerId]) return customerNames[customerId];
+    
+    try {
+      const response = await getAdminUserById(customerId);
+      if (response.data?.success && response.data.item) {
+        const user = response.data.item;
+        const fullName = [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ');
+        const name = fullName || user.name || customerId;
+        setCustomerNames(prev => ({ ...prev, [customerId]: name }));
+        return name;
+      }
+    } catch (error) {
+      console.error('Failed to fetch customer name:', error);
+    }
+    
+    return customerId;
+  };
 
   const load = async () => {
     setLoading(true);
@@ -42,6 +79,12 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (selected && selected.customerId) {
+      fetchCustomerName(selected.customerId);
+    }
+  }, [selected]);
 
   const onApprove = async (id: number | string) => { await approveRental(String(id)); await load(); };
   const onDecline = async (id: number | string) => { await declineRental(String(id)); await load(); };
@@ -91,21 +134,14 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
                       </div>
                       <div className="font-medium line-clamp-1">{r.productName || `#${r.productId}`}</div>
                       <div className="text-xs text-muted-foreground">
-                        {locale==='ar' ? `من ${new Date(r.startDate).toLocaleDateString('ar-EG')} إلى ${new Date(r.endDate).toLocaleDateString('ar-EG')}` : `From ${new Date(r.startDate).toLocaleDateString('en-US')} to ${new Date(r.endDate).toLocaleDateString('en-US')}`}
+                        {locale==='ar' ? `الحالة: ${getStatusInArabic(r.status)}` : `Status: ${getStatusInArabic(r.status)}`}
                       </div>
-                      <div className="mt-2 grid grid-cols-3 text-sm text-muted-foreground">
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'الأيام' : 'Days'}</div>
-                          <div className="font-medium">{r.rentalDays}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'سعر اليوم' : 'Daily'}</div>
-                          <div className="font-medium">{r.dailyRate}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'الإجمالي' : 'Total'}</div>
-                          <div className="font-semibold">{r.totalAmount}</div>
-                        </div>
+                      <div className="text-xs text-muted-foreground">
+                        {locale==='ar' ? `تاريخ الإنشاء: ${new Date(r.createdAt).toLocaleDateString('ar-EG')}` : `Created: ${new Date(r.createdAt).toLocaleDateString('en-US')}`}
+                      </div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        <div className="text-xs">{locale==='ar'? 'سعر اليوم' : 'Daily Price'}</div>
+                        <div className="font-medium">{r.dailyRate} {getCurrencySymbol(selected.currency)}</div>
                       </div>
                       <div className="mt-3 flex items-center justify-between gap-2" onClick={(e)=>e.stopPropagation()}>
                         <Button size="sm" variant="default" onClick={()=> onApprove(r._id || r.id)}>{locale==='ar'? 'اعتماد' : 'Approve'}</Button>
@@ -143,21 +179,14 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
                       </div>
                       <div className="font-medium line-clamp-1">{r.productName || `#${r.productId}`}</div>
                       <div className="text-xs text-muted-foreground">
-                        {locale==='ar' ? `من ${new Date(r.startDate).toLocaleDateString('ar-EG')} إلى ${new Date(r.endDate).toLocaleDateString('ar-EG')}` : `From ${new Date(r.startDate).toLocaleDateString('en-US')} to ${new Date(r.endDate).toLocaleDateString('en-US')}`}
+                        {locale==='ar' ? `الحالة: ${getStatusInArabic(r.status)}` : `Status: ${getStatusInArabic(r.status)}`}
                       </div>
-                      <div className="mt-2 grid grid-cols-3 text-sm text-muted-foreground">
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'الأيام' : 'Days'}</div>
-                          <div className="font-medium">{r.rentalDays}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'سعر اليوم' : 'Daily'}</div>
-                          <div className="font-medium">{r.dailyRate}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs">{locale==='ar'? 'الإجمالي' : 'Total'}</div>
-                          <div className="font-semibold">{r.totalAmount}</div>
-                        </div>
+                      <div className="text-xs text-muted-foreground">
+                        {locale==='ar' ? `تاريخ الإنشاء: ${new Date(r.createdAt).toLocaleDateString('ar-EG')}` : `Created: ${new Date(r.createdAt).toLocaleDateString('en-US')}`}
+                      </div>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        <div className="text-xs">{locale==='ar'? 'سعر اليوم' : 'Daily Price'}</div>
+                        <div className="font-medium">{r.dailyRate} {getCurrencySymbol(selected.currency)}</div>
                       </div>
                       <div className="mt-3 flex items-center justify-end gap-2" onClick={(e)=>e.stopPropagation()}>
                         <Button size="sm" variant="destructive" onClick={()=> onDeleteApproved(r._id || r.id)}>{locale==='ar'? 'حذف' : 'Delete'}</Button>
@@ -181,19 +210,18 @@ export default function AdminRentals({ setCurrentPage, ...rest }: Props) {
                 </div>
                 <div className="space-y-2 text-sm">
                   <div><span className="text-muted-foreground">{locale==='ar'? 'المنتج' : 'Product'}: </span>{selected.productName || `#${selected.productId}`}</div>
-                  <div><span className="text-muted-foreground">{locale==='ar'? 'الحالة' : 'Status'}: </span>{String(selected.status||'').toUpperCase()}</div>
-                  <div><span className="text-muted-foreground">{locale==='ar'? 'الفترة' : 'Period'}: </span>
+                  <div><span className="text-muted-foreground">{locale==='ar'? 'الحالة' : 'Status'}: </span>{getStatusInArabic(selected.status)}</div>
+                  <div><span className="text-muted-foreground">{locale==='ar'? 'تاريخ الإنشاء' : 'Created'}: </span>
                     {locale==='ar' 
-                      ? `من ${new Date(selected.startDate).toLocaleDateString('ar-EG')} إلى ${new Date(selected.endDate).toLocaleDateString('ar-EG')}`
-                      : `From ${new Date(selected.startDate).toLocaleDateString('en-US')} to ${new Date(selected.endDate).toLocaleDateString('en-US')}`}
+                      ? new Date(selected.createdAt).toLocaleDateString('ar-EG')
+                      : new Date(selected.createdAt).toLocaleDateString('en-US')}
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div><div className="text-xs text-muted-foreground">{locale==='ar'? 'الأيام' : 'Days'}</div><div className="font-medium">{selected.rentalDays}</div></div>
-                    <div><div className="text-xs text-muted-foreground">{locale==='ar'? 'سعر اليوم' : 'Daily'}</div><div className="font-medium">{selected.dailyRate}</div></div>
-                    <div><div className="text-xs text-muted-foreground">{locale==='ar'? 'الإجمالي' : 'Total'}</div><div className="font-semibold">{selected.totalAmount}</div></div>
+                  <div className="text-sm text-muted-foreground">
+                    <div className="text-xs">{locale==='ar'? 'سعر اليوم' : 'Daily Price'}</div>
+                    <div className="font-medium">{selected.dailyRate} {getCurrencySymbol(selected.currency)}</div>
                   </div>
                   {selected.customerId && (
-                    <div><span className="text-muted-foreground">{locale==='ar'? 'العميل' : 'Customer'}: </span>{String(selected.customerId)}</div>
+                    <div><span className="text-muted-foreground">{locale==='ar'? 'العميل' : 'Customer'}: </span>{customerNames[selected.customerId] || String(selected.customerId)}</div>
                   )}
                 </div>
                 <div className="mt-4 flex items-center justify-end gap-2">

@@ -1,5 +1,32 @@
 import { api } from '@/lib/api';
 
+// Product types (for admin interface)
+export type ProductDto = {
+  id: string;
+  nameEn: string;
+  nameAr: string;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
+  merchantId: string;
+  merchantName: string;
+  categoryId: string;
+  categoryName: string;
+  price: number;
+  discountPrice?: number | null;
+  currency: string;
+  stockQuantity: number;
+  allowCustomDimensions: boolean;
+  isAvailableForRent: boolean;
+  rentPricePerDay?: number | null;
+  isApproved: boolean;
+  approvedAt?: string | null;
+  averageRating?: number | null;
+  reviewCount: number;
+  images: Array<{ id: number; imageUrl: string; altText?: string; isPrimary: boolean }>;
+  attributes: Array<{ id: number; nameEn: string; nameAr: string; valueEn: string; valueAr: string }>;
+  createdAt: string;
+};
+
 export type AdminUser = {
   id: string;
   name?: string;
@@ -12,13 +39,6 @@ export type AdminUser = {
   city?: string;
   country?: string;
 };
-
-export async function getPendingServices() {
-  return api.get<{ success: boolean; items: Array<{ id: string; title: string; description?: string; vendorId?: string; dailyWage?: number; total?: number; createdAt?: string }> }>(
-    '/api/Admin/services/pending',
-    { auth: true }
-  );
-}
 
 // Pending products for admin approval
 export async function getPendingProducts() {
@@ -43,6 +63,16 @@ export async function adminCreateProduct(payload: any) {
 
 export async function adminUpdateProduct(id: string | number, payload: any) {
   return api.put(`/api/Admin/products/${String(id)}`, payload, { auth: true });
+}
+
+export async function adminGetProducts(filter: { page?: number; pageSize?: number; query?: string; categoryId?: string } = {}) {
+  const params = new URLSearchParams();
+  if (filter.page) params.set('page', String(filter.page));
+  if (filter.pageSize) params.set('pageSize', String(filter.pageSize));
+  if (filter.query) params.set('SearchTerm', filter.query);
+  if (filter.categoryId) params.set('CategoryId', String(filter.categoryId));
+  const qs = params.toString();
+  return api.get(`/api/Admin/products${qs ? `?${qs}` : ''}`, { auth: true });
 }
 
 export async function adminSetProductDiscount(id: string | number, discountPrice: number | null) {

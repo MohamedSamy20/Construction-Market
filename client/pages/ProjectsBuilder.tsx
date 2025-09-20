@@ -161,37 +161,42 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
   }, []);
 
   useEffect(() => {
-    // Always auto-calc PPM based on type, subtype, color using admin rules
-    // Prefer catalog base price per selected product if available
-    const base = (() => {
-      const p = catalog?.products?.find(p => p.id === ptype);
-      return (p?.basePricePerM2 ?? priceRules[ptype] ?? 0) as number;
-    })();
+    // Auto-calc PPM with priority: material-level price (from selected subtype) -> legacy base rules
+    const p = catalog?.products?.find(p => p.id === ptype);
+    const st: any = p?.subtypes?.find((s: any) => s.id === psubtype);
+    const mat = (st?.materials || []).find((m: any) => m.id === material);
+    if (mat && Number.isFinite(Number(mat.pricePerM2))) {
+      setPricePerMeter(Number(mat.pricePerM2 || 0));
+      return;
+    }
+    const base = (p?.basePricePerM2 ?? priceRules[ptype] ?? 0) as number;
     const sf = subtypeFactor[psubtype] ?? 1;
     const cf = colorFactor[color] ?? 1;
     const ppm = Math.round(base * sf * cf);
     setPricePerMeter(ppm);
-  }, [ptype, psubtype, color, priceRules, catalog]);
+  }, [ptype, psubtype, material, color, priceRules, catalog]);
 
-  // When product type changes, hydrate materials/colors/accessories and required dimensions
+  // When product type or subtype changes, hydrate materials/colors/accessories and required dimensions
   useEffect(() => {
     const p = catalog?.products?.find(p => p.id === ptype);
     if (p) {
-      const mats = p.materials || [];
+      const subs = p.subtypes || [];
+      setSubtypes(subs);
+      // materials now come from selected subtype if available
+      const st = subs.find(s => s.id === psubtype);
+      const mats = (st?.materials || []).map((m:any) => ({ id: m.id, ar: m.ar, en: m.en })) as Array<{id:string;ar?:string;en?:string}>;
       const cols = p.colors || [];
       const accs = p.accessories || [];
-      const subs = p.subtypes || [];
       setMaterials(mats);
       setColors(cols);
       setAccessories(accs);
-      setSubtypes(subs);
       setReqDim(p.dimensions || { width: true, height: true });
       // Ensure selections exist in new lists; otherwise default to first
       if (!mats.find(m => m.id === material)) setMaterial(mats[0]?.id || '');
       if (!cols.find(c => c.id === color)) setColor(cols[0]?.id || '');
       if (!subs.find(s => s.id === psubtype)) setPsubtype(subs[0]?.id || '');
     }
-  }, [ptype, catalog]);
+  }, [ptype, psubtype, catalog]);
 
   // Prefill from edit draft if exists
   useEffect(() => {
@@ -258,8 +263,11 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
   const totalExtra = useMemo(() => {
     return additionalBuilders.reduce((sum, b) => {
       const p = catalog?.products?.find(x => x.id === b.ptype);
+      const st = p?.subtypes?.find((s:any)=> s.id===b.psubtype) as any;
+      const mat = (st?.materials||[]).find((m:any)=> m.id===b.material) as any;
       const base = (p?.basePricePerM2 ?? priceRules[b.ptype] ?? 0) as number;
-      const ppm = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+      const fallback = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+      const ppm = Number.isFinite(Number(mat?.pricePerM2)) ? Number(mat?.pricePerM2||0) : fallback;
       const accPrice = (id:string) => (p?.accessories || []).find(a=>a.id===id)?.price || 0;
       return sum + computeTotal(b.width, b.height, undefined, ppm, b.quantity, b.selectedAcc, accPrice);
     }, 0);
@@ -332,8 +340,11 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
     // Build additional items (not as separate projects)
     const items = additionalBuilders.map((b) => {
       const p = catalog?.products?.find(x => x.id === b.ptype);
+      const st: any = p?.subtypes?.find((s:any)=> s.id===b.psubtype);
+      const mat: any = (st?.materials||[]).find((m:any)=> m.id===b.material);
       const base = (p?.basePricePerM2 ?? priceRules[b.ptype] ?? 0) as number;
-      const ppm = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+      const fallback = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+      const ppm = Number.isFinite(Number(mat?.pricePerM2)) ? Number(mat?.pricePerM2||0) : fallback;
       const accPrices = (id:string) => (p?.accessories || []).find(a=>a.id===id)?.price || 0;
       return {
         id: Math.random().toString(36).slice(2),
@@ -590,8 +601,11 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
           <div className="space-y-6 mt-6">
             {additionalBuilders.map((b, idx) => {
               const p = catalog?.products?.find(x => x.id === b.ptype);
+              const st: any = p?.subtypes?.find((s:any)=> s.id===b.psubtype);
+              const mat: any = (st?.materials||[]).find((m:any)=> m.id===b.material);
               const base = (p?.basePricePerM2 ?? priceRules[b.ptype] ?? 0) as number;
-              const ppm = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+              const fallback = Math.round(base * (subtypeFactor[b.psubtype] ?? 1) * (colorFactor[b.color] ?? 1));
+              const ppm = Number.isFinite(Number(mat?.pricePerM2)) ? Number(mat?.pricePerM2||0) : fallback;
               return (
                 <Card key={b.id} className="p-4">
                   <CardContent className="space-y-4">
@@ -635,8 +649,8 @@ export default function ProjectsBuilder({ setCurrentPage, ...rest }: RouteContex
                             <SelectValue placeholder={locale==='ar' ? 'اختر الخامة' : 'Select material'} />
                           </SelectTrigger>
                           <SelectContent>
-                            {materials.map((m) => (
-                              <SelectItem key={m.id} value={m.id}>{locale==='ar' ? m.ar : m.en}</SelectItem>
+                            {((st?.materials||[]) as any[]).map((m:any) => (
+                              <SelectItem key={m.id} value={m.id}>{locale==='ar' ? (m.ar || m.id) : (m.en || m.id)}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
