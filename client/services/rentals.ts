@@ -88,6 +88,16 @@ export async function replyRentalMessage(id: string | number, message: string, t
   return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/reply`, { message, toEmail }, { auth: true });
 }
 
+// Technician channel (vendor ↔ technician)
+export async function listTechRentalMessages(id: string | number) {
+  // add cache-busting param to avoid stale 304s in browsers
+  return api.get(`/api/Rentals/${encodeURIComponent(String(id))}/tech/messages?v=2`, { auth: true });
+}
+
+export async function sendTechRentalMessage(id: string | number, input: SendMessageInput) {
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/tech/message`, input, { auth: true });
+}
+
 // Admin endpoints
 export async function getPendingRentals() {
   return api.get(`/api/Rentals/pending`, { auth: true });
@@ -136,5 +146,11 @@ export async function getMyRecentMessages() {
 
 // Recent rentals where current user AND a technician/worker both participated
 export async function getMyRecentTechMessages() {
-  return api.get(`/api/Rentals/my/messages/tech/recent`, { auth: true });
+  // add cache-busting param to avoid stale 304s in browsers
+  return api.get(`/api/Rentals/my/messages/tech/recent?v=2`, { auth: true });
+}
+
+// Vendor-specific view of recent technician-channel rental messages
+export async function getMyVendorRecentTechMessages() {
+  return api.get(`/api/Rentals/my/messages/tech/recent/vendor?v=2`, { auth: true });
 }

@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import { useTranslation } from '../hooks/useTranslation';
 import { getConversation, getMyConversations, listMessages as listServiceMessages } from '@/services/chat';
 import { getCustomerProjectRecentMessages, getVendorProjectRecentMessages } from '@/services/projectChat';
-import { getCustomerRecentMessages, getRecentVendorMessages, getMyRecentMessages, getMyRecentTechMessages, listMyRentals, listRentalMessages, sendRentalMessage } from '@/services/rentals';
+import { getCustomerRecentMessages, getRecentVendorMessages, getMyRecentMessages, getMyRecentTechMessages, getMyVendorRecentTechMessages, listMyRentals, listRentalMessages, sendRentalMessage, listTechRentalMessages, sendTechRentalMessage } from '@/services/rentals';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Button } from '../components/ui/button';
@@ -30,6 +30,7 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
   const [rentalThread, setRentalThread] = useState<Array<{ id: string; message: string; at: string; from: string }>>([]);
   const [rentalThreadLoading, setRentalThreadLoading] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [rentalChannel, setRentalChannel] = useState<'user' | 'tech'>('user');
   // last seen tracking
   const roleLower = (context?.user?.role || '').toString().toLowerCase();
   const lsServiceKey = `chat_last_seen_services_${roleLower||'guest'}`;
@@ -77,7 +78,24 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
         }
         return getCustomerProjectRecentMessages();
       })();
-      const rentPromise = role === 'vendor' ? getMyRecentTechMessages() : (role === 'technician' || role === 'worker') ? getMyRecentMessages() : getCustomerRecentMessages();
+      // For vendor, combine vendor-owned rentals (by product) AND authored tech-channel rentals
+      const rentPromise = role === 'vendor'
+        ? Promise.all([getMyVendorRecentTechMessages(), getMyRecentTechMessages()]).then(([a,b]) => {
+            const arrA = (a && (a as any).ok && Array.isArray((a as any).data)) ? ((a as any).data as any[]) : [];
+            const arrB = (b && (b as any).ok && Array.isArray((b as any).data)) ? ((b as any).data as any[]) : [];
+            const map = new Map<string, any>();
+            for (const x of [...arrA, ...arrB]) {
+              const rid = String((x as any).rentalId ?? (x as any).conversationId ?? (x as any).id ?? '');
+              if (!rid) continue;
+              const item = { rentalId: rid, message: String((x as any).message||''), at: String((x as any).at||'') };
+              const prev = map.get(rid);
+              if (!prev || new Date(item.at).getTime() > new Date(prev.at).getTime()) map.set(rid, item);
+            }
+            return { ok: true, data: Array.from(map.values()) } as any;
+          })
+        : (role === 'technician' || role === 'worker')
+          ? getMyRecentTechMessages()
+          : getCustomerRecentMessages();
       const vendorExtra = role === 'vendor'
         ? Promise.all([ getVendorProjectRecentMessages(), getRecentVendorMessages() ])
         : Promise.resolve([null, null] as any);
@@ -107,7 +125,8 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
       renArr = Array.from(rentMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
 
       if (role==='vendor') {
-        setVendorServiceItems(projArr);
+        // Show only service conversations that already have at least one message
+        setVendorServiceItems(projArr.filter((x)=> String(x.message||'').trim().length>0));
         const vProjRaw = extra && extra[0] && (extra[0] as any).ok && Array.isArray((extra[0] as any).data) ? ((extra[0] as any).data as any[]) : [];
         const vProjMap = new Map<string, { conversationId: string; projectId: string; message: string; at: string }>();
         for (const p of vProjRaw) {
@@ -119,6 +138,17 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
         }
         setVendorUserProjectItems(Array.from(vProjMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime()));
 
+        // Build technician rentals from renArr first
+        const tRenMap = new Map<string, { rentalId: string; message: string; at: string }>();
+        for (const r of renArr) {
+          const rid = String((r as any).rentalId ?? (r as any).conversationId ?? (r as any).id ?? '');
+          if (!rid) continue;
+          const prev = tRenMap.get(rid);
+          if (!prev || new Date(r.at).getTime() > new Date(prev.at).getTime()) tRenMap.set(rid, r);
+        }
+        const techRentals = Array.from(tRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
+
+        // User rentals from vendor perspective (RentalMessage only)
         const vRenRaw = extra && extra[1] && (extra[1] as any).ok && Array.isArray((extra[1] as any).data) ? ((extra[1] as any).data as any[]) : [];
         const vRenMap = new Map<string, { rentalId: string; message: string; at: string }>();
         for (const r of vRenRaw) {
@@ -128,8 +158,9 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
           const prev = vRenMap.get(rid);
           if (!prev || new Date(item.at).getTime() > new Date(prev.at).getTime()) vRenMap.set(rid, item);
         }
-        setVendorUserRentalItems(Array.from(vRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime()));
-        setVendorTechRentalItems(renArr);
+        const userRentals = Array.from(vRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
+        setVendorUserRentalItems(userRentals);
+        setVendorTechRentalItems(techRentals);
       } else {
         setProjectItems(projArr);
         setRentalItems(renArr);
@@ -181,8 +212,9 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
           // customers -> project recent messages endpoints
           return getCustomerProjectRecentMessages();
         })();
-        // For vendor we also fetch user projects and rentals
-        const rentPromise = role === 'vendor' ? getMyRecentTechMessages() : (role === 'technician' || role === 'worker') ? getMyRecentMessages() : getCustomerRecentMessages();
+        // For vendor and technicians/workers, use technician-channel recent messages (RentalMessageTechnician)
+        // This aligns with handleRefresh() and ensures the Tech tab rentals come from the tech channel
+        const rentPromise = role === 'vendor' ? getMyVendorRecentTechMessages() : (role === 'technician' || role === 'worker') ? getMyRecentTechMessages() : getCustomerRecentMessages();
         const vendorExtra = role === 'vendor'
           ? Promise.all([
               getVendorProjectRecentMessages(), // user projects
@@ -198,6 +230,10 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
           console.debug('[ChatInbox] lengths proj=', projLen, 'rent=', rentLen);
           if (!(proj as any)?.ok || !(rent as any)?.ok) {
             console.debug('[ChatInbox] proj.status=', (proj as any)?.status, 'rent.status=', (rent as any)?.status, 'errors:', (proj as any)?.error, (rent as any)?.error);
+          }
+          // Log specific rental data for vendor tech rentals
+          if (role === 'vendor' && Array.isArray((rent as any)?.data)) {
+            console.debug('[ChatInbox] vendor tech rental data:', (rent as any).data);
           }
         } catch {}
         if (!cancelled) {
@@ -224,8 +260,9 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
           }
           renArr = Array.from(rentMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
 
-          // Fallback: if rentals still empty, scan my rentals (limit) and pick last message per rental
-          if (renArr.length === 0) {
+          // Fallback (customers only): if rentals still empty, scan my rentals (limit) and pick last message per rental
+          // IMPORTANT: Do NOT run this for vendor/technician/worker, to avoid mixing tech-channel with user-channel
+          if (renArr.length === 0 && !(role === 'vendor' || role === 'technician' || role === 'worker')) {
             try {
               const my = await listMyRentals();
               if (my.ok && Array.isArray(my.data)) {
@@ -248,8 +285,8 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
           }
 
           if (role==='vendor') {
-            // Services list for vendor (technicians)
-            setVendorServiceItems(projArr);
+            // Services list for vendor (technicians) - only those with at least one message
+            setVendorServiceItems(projArr.filter((x)=> String(x.message||'').trim().length>0));
             // User-side projects (keep latest per conversationId)
             const vProjRaw = extra && extra[0] && (extra[0] as any).ok && Array.isArray((extra[0] as any).data)
               ? ((extra[0] as any).data as any[])
@@ -264,7 +301,17 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
             }
             const vProj = Array.from(vProjMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
             setVendorUserProjectItems(vProj);
-            // User-side rentals
+            // Tech-side rentals authored by vendor (ensure latest per rentalId)
+            const tRenMap = new Map<string, { rentalId: string; message: string; at: string }>();
+            for (const r of renArr) {
+              const rid = String((r as any).rentalId ?? (r as any).conversationId ?? (r as any).id ?? '');
+              if (!rid) continue;
+              const prev = tRenMap.get(rid);
+              if (!prev || new Date(r.at).getTime() > new Date(prev.at).getTime()) tRenMap.set(rid, r);
+            }
+            const techRentals = Array.from(tRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
+
+            // User-side rentals (user ↔ vendor) from RentalMessage only
             const vRenRaw = extra && extra[1] && (extra[1] as any).ok && Array.isArray((extra[1] as any).data)
               ? ((extra[1] as any).data as any[])
               : [];
@@ -277,16 +324,9 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
               if (!prev || new Date(item.at).getTime() > new Date(prev.at).getTime()) vRenMap.set(rid, item);
             }
             const vRen = Array.from(vRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime());
+
             setVendorUserRentalItems(vRen);
-            // Tech-side rentals authored by vendor (ensure latest per rentalId)
-            const tRenMap = new Map<string, { rentalId: string; message: string; at: string }>();
-            for (const r of renArr) {
-              const rid = String((r as any).rentalId||'');
-              if (!rid) continue;
-              const prev = tRenMap.get(rid);
-              if (!prev || new Date(r.at).getTime() > new Date(prev.at).getTime()) tRenMap.set(rid, r);
-            }
-            setVendorTechRentalItems(Array.from(tRenMap.values()).sort((a,b)=> new Date(b.at).getTime() - new Date(a.at).getTime()));
+            setVendorTechRentalItems(techRentals);
           } else {
             // Default: ensure rentals are unique by rentalId keeping latest
             const renMap = new Map<string, { rentalId: string; message: string; at: string }>();
@@ -372,6 +412,7 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
 
   const openRentalThread = async (rentalId: string, lastMessage?: string) => {
     try {
+      setRentalChannel('user');
       setActiveRentalId(rentalId);
       setRentalModalOpen(true);
       setReplyText('');
@@ -380,6 +421,20 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
       const res = await listRentalMessages(rentalId);
       const arr = (res.ok && Array.isArray(res.data)) ? (res.data as any[]).map((m:any)=> ({ id: String(m.id||m._id||''), message: String(m.message||''), at: String(m.at||m.createdAt||''), from: String(m.from||m.fromUserId||'') })) : [];
       // Server returns newest first; show oldest at top
+      setRentalThread(arr.slice().reverse());
+      setRentalThreadLoading(false);
+    } catch {}
+  };
+
+  const openTechRentalThread = async (rentalId: string) => {
+    try {
+      setRentalChannel('tech');
+      setActiveRentalId(rentalId);
+      setRentalModalOpen(true);
+      setReplyText('');
+      setRentalThreadLoading(true);
+      const res = await listTechRentalMessages(rentalId);
+      const arr = (res.ok && Array.isArray(res.data)) ? (res.data as any[]).map((m:any)=> ({ id: String(m.id||m._id||''), message: String(m.message||''), at: String(m.at||m.createdAt||''), from: String(m.from||m.fromUserId||'') })) : [];
       setRentalThread(arr.slice().reverse());
       setRentalThreadLoading(false);
     } catch {}
@@ -517,7 +572,7 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
                               <div className="font-medium text-sm">{locale==='ar' ? 'محادثة تأجير' : 'Rental chat'}</div>
                               <div className="text-xs text-muted-foreground line-clamp-2">{r.message}</div>
                             </div>
-                            <Button size="sm" variant="outline" onClick={()=> { setLastSeen(lsRentalKey); openRentalThread(String(r.rentalId)); }}>{locale==='ar' ? 'فتح' : 'Open'}</Button>
+                            <Button size="sm" variant="outline" onClick={()=> { setLastSeen(lsRentalKey); openTechRentalThread(String(r.rentalId)); }}>{locale==='ar' ? 'فتح' : 'Open'}</Button>
                           </CardContent>
                         </Card>
                       ))}
@@ -566,7 +621,7 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
                           <div className="font-medium text-sm">{locale==='ar' ? 'محادثة تأجير' : 'Rental chat'}</div>
                           <div className="text-xs text-muted-foreground line-clamp-2">{r.message}</div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={()=> { setLastSeen(lsRentalKey); openRentalThread(String(r.rentalId), r.message); }}>{locale==='ar' ? 'فتح' : 'Open'}</Button>
+                        <Button size="sm" variant="outline" onClick={()=> { setLastSeen(lsRentalKey); (roleLower==='technician'||roleLower==='worker') ? openTechRentalThread(String(r.rentalId)) : openRentalThread(String(r.rentalId), r.message); }}>{locale==='ar' ? 'فتح' : 'Open'}</Button>
                       </CardContent>
                     </Card>
                   ))}
@@ -611,7 +666,9 @@ export default function ChatInbox(context: RouteContext = {} as RouteContext) {
                     onClick={async()=>{
                       const msg = replyText.trim();
                       if (!msg || !activeRentalId) return;
-                      const r = await sendRentalMessage(activeRentalId, { message: msg });
+                      const r = rentalChannel==='tech'
+                        ? await sendTechRentalMessage(activeRentalId, { message: msg })
+                        : await sendRentalMessage(activeRentalId, { message: msg });
                       if ((r as any)?.ok) {
                         setReplyText('');
                         setRentalThread((prev)=> [...prev, { id: String(Date.now()), message: msg, at: new Date().toISOString(), from: 'me' }]);

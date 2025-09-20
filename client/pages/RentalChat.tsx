@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import type { RouteContext } from '../components/Router';
 import { useTranslation } from '../hooks/useTranslation';
-import { listRentalMessages, sendRentalMessage } from '@/services/rentals';
+import { listRentalMessages, sendRentalMessage, listTechRentalMessages, sendTechRentalMessage } from '@/services/rentals';
 import { Card, CardContent } from '../components/ui/card';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
@@ -13,6 +13,8 @@ import { toastError, toastSuccess } from '../utils/alerts';
 
 export default function RentalChat(context: Partial<RouteContext> = {}) {
   const { locale } = useTranslation();
+  const roleLower = String((context as any)?.user?.role || '').toLowerCase();
+  const useTechChannel = roleLower==='technician' || roleLower==='worker' || roleLower==='vendor';
   const [rentalId, setRentalId] = useState<string>('');
   const [messages, setMessages] = useState<Array<{ id: string; message: string; at: string; from: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +38,7 @@ export default function RentalChat(context: Partial<RouteContext> = {}) {
     const load = async () => {
       try {
         setLoading(true);
-        const r = await listRentalMessages(rentalId);
+        const r = useTechChannel ? await listTechRentalMessages(rentalId) : await listRentalMessages(rentalId);
         if (!cancelled) {
           const arr = (r.ok && Array.isArray(r.data)) ? (r.data as any[]).map((m:any)=> ({ id: String(m.id||m._id||''), message: String(m.message||''), at: String(m.at||m.createdAt||''), from: String(m.from||m.fromUserId||'') })) : [];
           setMessages(arr);
@@ -60,7 +62,9 @@ export default function RentalChat(context: Partial<RouteContext> = {}) {
     if (!msg) { toastError(locale==='ar'? 'اكتب رسالة' : 'Write a message', locale==='ar'); return; }
     if (!rentalId) return;
     try {
-      const resp = await sendRentalMessage(rentalId, { message: msg });
+      const resp = useTechChannel
+        ? await sendTechRentalMessage(rentalId, { message: msg })
+        : await sendRentalMessage(rentalId, { message: msg });
       if ((resp as any)?.ok) {
         setText('');
         setMessages((prev)=> [{ id: String(Date.now()), message: msg, at: new Date().toISOString(), from: 'me' }, ...prev]);
