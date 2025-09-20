@@ -11,6 +11,7 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Store, Search, Filter, Plus, Edit, Trash2, MapPin, Mail, Phone, ArrowRight, CheckCircle, Ban, Eye } from 'lucide-react';
 import { useTranslation } from '../../hooks/useTranslation';
+import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 import { getPendingMerchants, getUsers as adminGetUsers, approveMerchant, suspendMerchant } from '@/services/admin';
 import { successAlert, warningAlert } from '../../utils/alerts';
 import { getAdminUserById, type AdminUserDetails } from '@/services/adminUsers';

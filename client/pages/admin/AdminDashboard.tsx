@@ -26,7 +26,8 @@ import Header from '../../components/Header';
 import { useTranslation } from '../../hooks/useTranslation';
 import React from 'react';
 import { toastSuccess, toastError } from '../../utils/alerts';
-import { getPendingMerchants, getPendingServices, approveMerchant, suspendMerchant, approveService, rejectService, getUsers, getPendingProducts, approveProduct, rejectProduct, getAdminAnalyticsOverview, getAdminOption, setAdminOption, approveTechnician, suspendTechnician, AdminUser } from '@/services/admin';
+import { getPendingMerchants, approveMerchant, suspendMerchant, getUsers, getPendingProducts, approveProduct, rejectProduct, getAdminAnalyticsOverview, getAdminOption, setAdminOption, approveTechnician, suspendTechnician, AdminUser } from '@/services/admin';
+import { getAdminPendingServices, approveService, rejectService } from '@/services/services';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { getProductById } from '@/services/products';
 
@@ -72,7 +73,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
       try { autoHideTimer = setTimeout(() => { try { (context as any)?.hideLoading?.(); } catch {} }, 600); } catch {}
       const [mer, srv, prod, usersAll, usersActiveVendors, usersTech, overview, c1, c2, c3, qact] = await Promise.all([
         getPendingMerchants(),
-        getPendingServices(),
+        getAdminPendingServices(),
         getPendingProducts(),
         getUsers(),
         getUsers({ role: 'Merchant', status: 'active' }),
@@ -250,7 +251,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
   const doApproveService = async (id: string) => { 
     try { 
-      const r = await approveService(String(id)); 
+      const r = await approveService(Number(id)); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم اعتماد الخدمة':'Service approved', isAr); 
         await loadAll(); 
@@ -265,7 +266,7 @@ export default function AdminDashboard({ setCurrentPage, ...context }: Partial<R
 
   const doRejectService = async (id: string) => { 
     try { 
-      const r = await rejectService(String(id), ''); 
+      const r = await rejectService(Number(id), ''); 
       if (r.ok) { 
         toastSuccess(isAr? 'تم رفض الخدمة':'Service rejected', isAr); 
         await loadAll(); 
