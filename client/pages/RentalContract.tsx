@@ -10,7 +10,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { useTranslation } from '../hooks/useTranslation';
 import { RouteContext } from '../components/Router';
-import { getRentalById, adjustRentalDays, sendRentalMessage } from '@/services/rentals';
+import { getRentalById, adjustRentalDays, sendRentalMessage, listRentalMessages } from '@/services/rentals';
 import { getProductById } from '@/services/products';
 import { toastSuccess, toastError } from '../utils/alerts';
 import LoadingOverlay from '../components/LoadingOverlay';
@@ -20,12 +20,16 @@ interface Props extends Partial<RouteContext> {}
 export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
   const { locale } = useTranslation();
   const currency = locale === 'ar' ? 'ر.س' : 'SAR';
+  const isCustomer = String((rest as any)?.user?.role || '').toLowerCase() === 'customer';
 
   const [rental, setRental] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [paid, setPaid] = useState(false);
   const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState<Array<{ id: string; message: string; at: string; from: string }>>([]);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const listRef = useRef<HTMLDivElement|null>(null);
   const messageRef = useRef<HTMLTextAreaElement|null>(null);
 
   const isValidMongoId = (s: string) => /^[a-fA-F0-9]{24}$/.test(String(s || ''));
@@ -44,6 +48,9 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
         if (!rid) { if (!cancelled) setRental(parsed ?? null); return; }
         const res = await getRentalById(rid);
         let data:any = res.ok && res.data ? res.data : parsed;
+        if (data && !('id' in data) && (data as any)._id) {
+          data = { ...data, id: String((data as any)._id) };
+        }
         if (!data) return;
         if (!data.imageUrl && data.productId && isValidMongoId(String(data.productId)) && !String(data.productId).startsWith('contract:')) {
           try {
@@ -62,6 +69,27 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Load thread for this rental
+  useEffect(() => {
+    if (!rental?.id) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoadingMsgs(true);
+        const r = await listRentalMessages(String(rental.id));
+        if (!cancelled) {
+          const arr = (r.ok && Array.isArray(r.data)) ? (r.data as any[]).map((m:any)=> ({ id: String(m.id||m._id||''), message: String(m.message||''), at: String(m.at||m.createdAt||''), from: String(m.from||m.fromUserId||'') })) : [];
+          setMessages(arr);
+          setTimeout(()=> { try { listRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch {} }, 50);
+        }
+      } catch { if (!cancelled) setMessages([]); }
+      finally { if (!cancelled) setLoadingMsgs(false); }
+    };
+    load();
+    const timer = setInterval(load, 15000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [rental?.id]);
 
   const images = rental?.imageUrl ? [rental.imageUrl] : [''];
   const baseDays = Number(rental?.rentalDays || 1);
@@ -121,13 +149,22 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
   }, [rental?.id]);
 
   const sendMessage = async () => {
-    if (!message.trim()) { toastError(locale==='ar'? 'اكتب رسالة أولاً' : 'Please write a message first', locale==='ar'); return; }
+    const text = message.trim();
+    if (!text) { toastError(locale==='ar'? 'اكتب رسالة أولاً' : 'Please write a message first', locale==='ar'); return; }
     try {
-      if (rental?.id) {
-        await sendRentalMessage(String(rental.id), { message });
+      if (!rental?.id) { toastError(locale==='ar'? 'لا يوجد عقد صالح' : 'No valid contract', locale==='ar'); return; }
+      const resp = await sendRentalMessage(String(rental.id), { message: text });
+      if ((resp as any)?.ok) {
+        toastSuccess(locale==='ar'? 'تم إرسال الرسالة للتاجر' : 'Message sent to merchant', locale==='ar');
+        setMessage('');
+        // Optimistic add at top
+        setMessages((prev)=> [{ id: String(Date.now()), message: text, at: new Date().toISOString(), from: 'me' }, ...prev]);
+      } else if ((resp as any)?.status === 401) {
+        toastError(locale==='ar'? 'الرجاء تسجيل الدخول لإرسال الرسائل' : 'Please login to send messages', locale==='ar');
+        if ((rest as any)?.setCurrentPage) (rest as any).setCurrentPage('login');
+      } else {
+        toastError(locale==='ar'? 'تعذر إرسال الرسالة' : 'Failed to send message', locale==='ar');
       }
-      toastSuccess(locale==='ar'? 'تم إرسال الرسالة للتاجر' : 'Message sent to merchant', locale==='ar');
-      setMessage('');
     } catch {
       toastError(locale==='ar'? 'تعذر إرسال الرسالة' : 'Failed to send message', locale==='ar');
     }
@@ -255,13 +292,49 @@ export default function RentalContractPage({ setCurrentPage, ...rest }: Props) {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label>{locale==='ar'? 'رسالة للتاجر (موقع الاستلام / ملاحظات)' : 'Message to merchant (pickup location / notes)'}</Label>
-                <Textarea id="message" ref={messageRef as any} value={message} onChange={(e)=> setMessage(e.target.value)} rows={4} placeholder={locale==='ar'? 'مثال: استلام المعدة من يوم السبت عند الساعة 10 صباحاً' : 'Example: Pick up the equipment on Saturday at 10 AM'} />
-                <div className="flex justify-end">
-                  <Button variant="outline" onClick={sendMessage}><Send className="h-4 w-4 ml-2" />{locale==='ar'? 'إرسال' : 'Send'}</Button>
+              {/* Messages for vendor/technician; for customers, direct them to unified ChatInbox */}
+              {!isCustomer ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>{locale==='ar'? 'المحادثة' : 'Conversation'}</Label>
+                    <div ref={listRef} className="border rounded-md p-3 max-h-64 overflow-auto flex flex-col gap-2 bg-muted/20">
+                      {loadingMsgs && messages.length===0 && (<div className="text-xs text-muted-foreground">{locale==='ar'? 'جاري التحميل...' : 'Loading...'}</div>)}
+                      {messages.length===0 && !loadingMsgs && (<div className="text-xs text-muted-foreground">{locale==='ar'? 'لا توجد رسائل بعد' : 'No messages yet'}</div>)}
+                      {messages.map((m)=> (
+                        <div key={m.id} className={`text-xs p-2 rounded ${String(m.from||'')==='me' ? 'bg-primary text-primary-foreground self-start' : 'bg-white border self-end'}`}>
+                          <div className="whitespace-pre-wrap">{m.message}</div>
+                          <div className={`mt-1 opacity-70 ${String(m.from||'')==='me' ? '' : 'text-muted-foreground'}`}>{new Date(m.at).toLocaleString(locale==='ar'?'ar-EG':'en-GB')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>{locale==='ar'? 'رسالة للتاجر (موقع الاستلام / ملاحظات)' : 'Message to merchant (pickup location / notes)'}</Label>
+                    <Textarea id="message" ref={messageRef as any} value={message} onChange={(e)=> setMessage(e.target.value)} rows={4} placeholder={locale==='ar'? 'مثال: استلام المعدة من يوم السبت عند الساعة 10 صباحاً' : 'Example: Pick up the equipment on Saturday at 10 AM'} />
+                    <div className="flex justify-end">
+                      <Button variant="outline" onClick={sendMessage}><Send className="h-4 w-4 ml-2" />{locale==='ar'? 'إرسال' : 'Send'}</Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label>{locale==='ar'? 'الدردشة' : 'Chat'}</Label>
+                  <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                    {locale==='ar' ? 'تم نقل محادثات التأجير إلى صفحة الدردشة الموحدة.' : 'Rental chat has moved to the unified chat page.'}
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={() => {
+                        try { localStorage.setItem('open_rental_chat_id', String(rental?.id || '')); } catch {}
+                        if (setCurrentPage) setCurrentPage('chat-inbox'); else { const url=new URL(window.location.href); url.searchParams.set('page','chat-inbox'); window.location.href=url.toString(); }
+                      }}
+                    >
+                      {locale==='ar' ? 'فتح الدردشة' : 'Open Chat'}
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}

@@ -11,6 +11,7 @@ interface RouteConfig {
 
 // Import page components
 import Homepage from '../pages/Homepage';
+import CategoriesPage from '../pages/Categories';
 import ProductListing from '../pages/ProductListing';
 import ProductDetails from '../pages/ProductDetails';
 import Cart from '../pages/Cart';
@@ -36,6 +37,8 @@ import Login from '../pages/Login';
 import Register from '../pages/Register';
 import ForgotPassword from '../pages/ForgotPassword';
 import NotificationsPage from '../pages/Notifications';
+import ChatInbox from '../pages/ChatInbox';
+import RentalChat from '../pages/RentalChat';
 
 // Import vendor dashboard components
 import VendorDashboard from '../pages/vendor/VendorDashboard';
@@ -77,6 +80,7 @@ import TechnicianChat from '../pages/technician/TechnicianChat';
 export const routes: Record<string, RouteConfig> = {
   // Public routes
   home: { component: Homepage, title: 'الرئيسية', icon: Home },
+  categories: { component: CategoriesPage, title: 'الفئات', icon: Tag },
   products: { component: ProductListing, title: 'المنتجات', icon: Package },
   'product-details': { component: ProductDetails, title: 'تفاصيل المنتج', icon: Package },
   cart: { component: Cart, title: 'السلة', icon: ShoppingCart },
@@ -104,6 +108,8 @@ export const routes: Record<string, RouteConfig> = {
   'track-order': { component: TrackOrder, title: 'تتبع الطلب', icon: Truck, requiresAuth: true },
   'my-orders': { component: MyOrders, title: 'طلباتي', icon: FileText, requiresAuth: true },
   notifications: { component: NotificationsPage, title: 'التنبيهات', icon: Bell, requiresAuth: true, allowedRoles: ['customer', 'vendor', 'admin', 'worker'] },
+  'chat-inbox': { component: ChatInbox, title: 'الدردشة', icon: Users, requiresAuth: true, allowedRoles: ['customer','vendor','worker','admin'] },
+  'rental-chat': { component: RentalChat, title: 'محادثة التأجير', icon: Users, requiresAuth: true, allowedRoles: ['customer','vendor','admin'] },
 
   // Vendor routes (require vendor role)
   'vendor-dashboard': { component: VendorDashboard, title: 'لوحة التحكم', icon: BarChart3, requiresAuth: true, allowedRoles: ['vendor'] },

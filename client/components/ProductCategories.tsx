@@ -7,7 +7,12 @@ import { RouteContext } from "./Router";
 import { useTranslation } from "../hooks/useTranslation";
 import { getRootCategories } from "@/services/products";
 
-export default function ProductCategories({ setCurrentPage, setSearchFilters }: Partial<RouteContext>) {
+type Props = Partial<RouteContext> & {
+  limit?: number; // show only first N items if provided
+  showMoreButton?: boolean; // render a global "show more" button to go to all categories page
+};
+
+export default function ProductCategories({ setCurrentPage, setSearchFilters, limit, showMoreButton }: Props) {
   const { t, locale } = useTranslation();
   const [cats, setCats] = useState<Array<{ id: string | number; title: string; description?: string; image?: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -62,45 +67,54 @@ export default function ProductCategories({ setCurrentPage, setSearchFilters }: 
           </div>
         )}
         {!loading && cats.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {cats.map((category) => (
-            <Card
-              key={category.id}
-              className="group hover:shadow-lg transition-all duration-300 overflow-hidden"
-            >
-              <div className="relative h-48 overflow-hidden">
-                {(category as any).image ? (
-                  <ImageWithFallback
-                    src={(category as any).image}
-                    alt={(category as any).title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-100" />
-                )}
-                <div className="absolute inset-0 bg-black/40 group-hover:bg-black/30 transition-colors duration-300"></div>
-              </div>
-              <CardContent className="p-6">
-                <h3 className="font-bold text-xl mb-2">{(category as any).title}</h3>
-                {(category as any).description ? (
-                  <p className="text-muted-foreground mb-4">{(category as any).description}</p>
-                ) : null}
-                <Button
-                  variant="outline"
-                  className="w-full border-gray-300 text-gray-900 bg-white"
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {(limit ? cats.slice(0, limit) : cats).map((category) => (
+                <Card
+                  key={category.id}
+                  className="group hover:shadow-lg transition-all duration-300 overflow-hidden cursor-pointer"
                   onClick={() => {
                     // Navigate to products and filter by categoryId directly (backend filter)
                     setSearchFilters && setSearchFilters({ term: '', categoryId: String((category as any).id) });
                     setCurrentPage && setCurrentPage("products");
                   }}
+                  role="button"
+                  tabIndex={0}
                 >
-                  {t("viewAll")}
+                  <div className="relative h-48 overflow-hidden">
+                    {(category as any).image ? (
+                      <ImageWithFallback
+                        src={(category as any).image}
+                        alt={(category as any).title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-100" />
+                    )}
+                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/30 transition-colors duration-300"></div>
+                  </div>
+                  <CardContent className="p-6">
+                    <h3 className="font-bold text-xl mb-2">{(category as any).title}</h3>
+                    {(category as any).description ? (
+                      <p className="text-muted-foreground mb-0">{(category as any).description}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            {showMoreButton && (!limit || cats.length > limit) && (
+              <div className="mt-8 flex justify-center">
+                <Button
+                  variant="outline"
+                  className="border-gray-300 text-gray-900 bg-white"
+                  onClick={() => setCurrentPage && setCurrentPage('categories')}
+                >
+                  {locale === 'ar' ? 'عرض المزيد' : 'Show more'}
                   <ArrowLeft className="w-4 h-4 mr-2" />
                 </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

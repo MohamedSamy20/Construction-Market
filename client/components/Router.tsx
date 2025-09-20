@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { routes } from "./routes";
 import { getCart as apiGetCart, addItem as apiAddItem, updateItemQuantity as apiUpdateItemQuantity, removeItem as apiRemoveItem, clearCart as apiClearCart } from "@/services/cart";
 import Homepage from "../pages/Homepage";
@@ -188,6 +188,8 @@ export default function Router() {
   
   // Initialize wishlist state
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
+  // Cache of product IDs that returned 404 to avoid repeated fetches
+  const notFoundProductsRef = useRef<Set<string>>(new Set());
   // Global loading overlay state
   const [loadingOpen, setLoadingOpen] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState<string | undefined>(undefined);
@@ -300,11 +302,15 @@ export default function Router() {
               const pid = normalizeProductIdForApi(ci.id);
               if (pid === null) return ci;
               const pidStr = String(pid);
+              if (notFoundProductsRef.current.has(pidStr)) return ci;
               // Only fetch if it's a valid Mongo ObjectId (24 hex) or strictly numeric id
               const isValidOid = /^[a-fA-F0-9]{24}$/.test(pidStr);
               const isNumeric = /^\d+$/.test(pidStr);
               if (!isValidOid && !isNumeric) return ci;
               const p = await getProductById(pid as any);
+              if (!p.ok && p.status === 404) {
+                notFoundProductsRef.current.add(pidStr);
+              }
               if (p.ok && p.data) {
                 const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
                 const image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
@@ -354,12 +360,17 @@ export default function Router() {
                 const isValidOid = /^[a-fA-F0-9]{24}$/.test(pidStr);
                 const isNumeric = /^\d+$/.test(pidStr);
                 if (isValidOid || isNumeric) {
-                  const p = await getProductById(pidNorm as any);
-                  if (p.ok && p.data) {
-                    const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
-                    image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
-                    price = Number((p.data as any).price ?? 0);
-                    if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined;
+                  if (!notFoundProductsRef.current.has(pidStr)) {
+                    const p = await getProductById(pidNorm as any);
+                    if (!p.ok && p.status === 404) {
+                      notFoundProductsRef.current.add(pidStr);
+                    }
+                    if (p.ok && p.data) {
+                      const imgs = Array.isArray((p.data as any).images) ? (p.data as any).images : [];
+                      image = imgs.find((im:any)=> im?.isPrimary)?.imageUrl || imgs[0]?.imageUrl || (p as any).data?.imageUrl;
+                      price = Number((p.data as any).price ?? 0);
+                      if (!name) name = (p as any).data?.nameAr || (p as any).data?.nameEn || undefined;
+                    }
                   }
                 }
               }
@@ -644,8 +655,24 @@ export default function Router() {
         // Clean up page-specific params so they don't leak into other pages
         const needsServiceId = currentPage === 'technician-service-details';
         const needsProjectId = currentPage === 'technician-project-details';
+        const needsProductId = currentPage === 'product-details';
         if (!needsServiceId) url.searchParams.delete('serviceId');
         if (!needsProjectId) url.searchParams.delete('projectId');
+        // For product details, persist id or slug for shareable deep links
+        if (needsProductId) {
+          const pid = (selectedProduct as any)?.id ? String((selectedProduct as any).id) : '';
+          const pslug = (selectedProduct as any)?.slug ? String((selectedProduct as any).slug) : '';
+          if (pid) {
+            url.searchParams.set('id', pid);
+            url.searchParams.delete('slug');
+          } else if (pslug) {
+            url.searchParams.set('slug', pslug);
+            url.searchParams.delete('id');
+          }
+        } else {
+          url.searchParams.delete('id');
+          url.searchParams.delete('slug');
+        }
         window.history.replaceState({}, "", url.toString());
       } catch {
         // no-op

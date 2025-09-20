@@ -32,6 +32,7 @@ import vendorAnalyticsRoutes from './routes/vendorAnalytics.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import commissionsRoutes from './routes/commissions.routes.js';
 import techniciansRoutes from './routes/technicians.routes.js';
+import reviewsRoutes from './routes/reviews.routes.js';
 
 import { errorHandler, notFound } from './middlewares/error.js';
 import { seedAdmin, seedCategories } from './utils/seed.js';
@@ -206,6 +207,7 @@ app.use('/api/VendorAnalytics', vendorAnalyticsRoutes);
 app.use('/api/commissions', commissionsRoutes);
 app.use('/api/Technicians', techniciansRoutes);
 app.use('/api/Notifications', notificationsRoutes);
+app.use('/api/Reviews', reviewsRoutes);
 
 // 404 and error
 app.use(notFound);

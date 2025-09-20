@@ -12,7 +12,8 @@ export default function Homepage(context: RouteContext = {} as RouteContext) {
     <>
       <Header {...context} />
       <HeroSearch {...context} />
-      <ProductCategories {...context} />
+      <ProductCategories {...context} limit={4} showMoreButton />
+
       {context?.user?.role === 'worker' && (<ServicesSection />)}
       <BestSellingProducts {...context} />
       <PlatformFeatures {...context} />

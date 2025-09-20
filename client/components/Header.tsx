@@ -34,9 +34,48 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
       }
     }
   };
+
+  // Load chat-only messages for the dedicated chat icon
+  const loadChats = async () => {
+    try {
+      const notif = await listMyNotifications();
+      let mappedChat: any[] = [];
+      if (notif.ok && (notif.data as any)?.success) {
+        const arr = ((notif.data as any).data || []) as any[];
+        mappedChat = arr
+          .filter((n:any)=> String(n.type||'') === 'chat.message')
+          .map((n:any)=> ({
+            type: 'chat.message',
+            title: locale==='ar' ? 'رسالة دردشة' : 'Chat message',
+            message: n.message,
+            createdAt: n.createdAt,
+            conversationId: n?.data?.conversationId,
+            kind: n?.data?.kind || '',
+            _id: n?._id,
+            read: !!n?.read,
+          }));
+      }
+      const unread = mappedChat.filter((x:any)=> !x.read).length;
+      setChatUnreadCount(unread);
+      const sorted = mappedChat.sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,15);
+      setChatItems(sorted);
+      // Fire an event if there are newer messages
+      try {
+        const latest = sorted.length ? new Date(sorted[0].createdAt).getTime() : 0;
+        if (latest && latest > lastChatTs) {
+          setLastChatTs(latest);
+          if (typeof window !== 'undefined') {
+            const top = sorted[0];
+            window.dispatchEvent(new CustomEvent('chat_incoming', { detail: { at: latest, conversationId: top?.conversationId || '', kind: 'rental' } }));
+          }
+        }
+      } catch {}
+    } catch { setChatItems([]); setChatUnreadCount(0); }
+  };
   // Unified notification badge: count unread notifications
   useEffect(() => {
     let timer: any;
+    let chatTimer: any;
     async function fetchCount() {
       try {
         if (!user) { setVendorMsgCount(0); return; }
@@ -74,8 +113,11 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
       } catch { /* ignore */ }
     }
     fetchCount();
-    timer = setInterval(fetchCount, 30000);
-    return () => { if (timer) clearInterval(timer); };
+    // also refresh chat items/counts periodically
+    loadChats();
+    timer = setInterval(fetchCount, 10000);
+    chatTimer = setInterval(loadChats, 5000);
+    return () => { if (timer) clearInterval(timer); if (chatTimer) clearInterval(chatTimer); };
   }, [user?.id, user?.role]);
   const displayName = [user?.firstName, user?.middleName, user?.lastName].filter(Boolean).join(' ') || (user?.name || '');
   const isHome = (() => {
@@ -110,6 +152,11 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [vendorMsgCount, setVendorMsgCount] = useState<number>(0);
+  // Chat state (dedicated icon)
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatItems, setChatItems] = useState<any[]>([]);
+  const [chatUnreadCount, setChatUnreadCount] = useState<number>(0);
+  const [lastChatTs, setLastChatTs] = useState<number>(0);
   const loadNotifications = async () => {
     try {
       if (role === 'vendor') {
@@ -139,52 +186,14 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           projectId: m.projectId,
           conversationId: m.conversationId,
         }));
-        // Chat notifications (unified backend notifications)
-        let mappedChat: any[] = [];
-        try {
-          const notif = await listMyNotifications();
-          if (notif.ok && (notif.data as any)?.success) {
-            const arr = ((notif.data as any).data || []) as any[];
-            mappedChat = arr
-              .filter((n:any)=> String(n.type||'') === 'chat.message')
-              .map((n:any)=> ({
-                type: 'chat.message',
-                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
-                message: n.message,
-                createdAt: n.createdAt,
-                conversationId: n?.data?.conversationId,
-                _id: n?._id,
-              }));
-          }
-        } catch {}
-        const merged = [...mappedR, ...mappedP, ...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
+        // Exclude chat messages here; they will appear in the dedicated chat icon
+        const merged = [...mappedR, ...mappedP].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
         setNotifications(merged);
         return;
       } else if (role === 'worker') {
-        // Technician: rely on unified notifications with type 'chat.message'
-        let mappedChat: any[] = [];
-        try {
-          const notif = await listMyNotifications();
-          if (notif.ok && (notif.data as any)?.success) {
-            const arr = ((notif.data as any).data || []) as any[];
-            mappedChat = arr
-              .filter((n:any)=> String(n.type||'') === 'chat.message')
-              .map((n:any)=> ({
-                type: 'chat.message',
-                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
-                message: n.message,
-                createdAt: n.createdAt,
-                conversationId: n?.data?.conversationId,
-                _id: n?._id,
-                read: !!n?.read,
-              }));
-          }
-        } catch {}
-        // For badge: count unread chat messages if possible
-        const unreadCount = mappedChat.filter((x:any)=> !x.read).length;
-        setVendorMsgCount(unreadCount);
-        const merged = [...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
-        setNotifications(merged);
+        // For technicians, keep notifications popover free of chat; chat will be in chat icon
+        setVendorMsgCount(0);
+        setNotifications([]);
         return;
       } else if (role === 'customer' || isCustomerRole) {
         const [cntR, recentR, cntP, recentP] = await Promise.all([
@@ -213,25 +222,8 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
           projectId: m.projectId,
           conversationId: m.conversationId,
         }));
-        // Chat notifications for worker/technician or other roles
-        let mappedChat: any[] = [];
-        try {
-          const notif = await listMyNotifications();
-          if (notif.ok && (notif.data as any)?.success) {
-            const arr = ((notif.data as any).data || []) as any[];
-            mappedChat = arr
-              .filter((n:any)=> String(n.type||'') === 'chat.message')
-              .map((n:any)=> ({
-                type: 'chat.message',
-                title: locale==='ar' ? 'رسالة دردشة جديدة' : 'New chat message',
-                message: n.message,
-                createdAt: n.createdAt,
-                conversationId: n?.data?.conversationId,
-                _id: n?._id,
-              }));
-          }
-        } catch {}
-        const merged = [...mappedR, ...mappedP, ...mappedChat].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
+        // Exclude chat messages for customers in notifications
+        const merged = [...mappedR, ...mappedP].sort((a:any,b:any)=> new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0,10);
         setNotifications(merged);
         return;
       }
@@ -520,6 +512,111 @@ export default function Header({ currentPage, setCurrentPage, cartItems, user, s
                           onClick={() => { setNotifOpen(false); if (setCurrentPage) setCurrentPage('notifications'); else { if (typeof window!=='undefined'){ try { const url=new URL(window.location.href); url.searchParams.set('page','notifications'); window.location.href=url.toString(); } catch {} } } }}
                         >
                           {locale==='ar' ? 'عرض المزيد' : 'Show more'}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                )}
+                {user && (
+                  <Popover open={chatOpen} onOpenChange={(o)=>{ setChatOpen(o); if (o) loadChats(); }}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="relative"
+                        onClick={(e)=>{ e.preventDefault(); if (setCurrentPage) setCurrentPage('chat-inbox'); else { const url=new URL(window.location.href); url.searchParams.set('page','chat-inbox'); window.location.href=url.toString(); } }}
+                        aria-label={locale==='ar' ? 'الدردشة' : 'Chat'}
+                        title={locale==='ar' ? 'الدردشة' : 'Chat'}
+                      >
+                        <MessageCircle className="w-5 h-5" />
+                        {chatUnreadCount > 0 && (
+                          <Badge className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full px-1 flex items-center justify-center text-xs">
+                            {chatUnreadCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align={locale==='ar' ? 'start' : 'end'} side="bottom" sideOffset={10} className="w-80 p-0 bg-white">
+                      <div className="p-3 border-b font-semibold text-sm">
+                        {locale==='ar' ? 'الدردشة' : 'Chat'}
+                      </div>
+                      <div className="p-3 space-y-3 max-h-80 overflow-auto">
+                        {chatItems.length === 0 && (
+                          <div className="text-sm text-muted-foreground">
+                            {locale==='ar' ? 'لا توجد رسائل دردشة.' : 'No chat messages.'}
+                          </div>
+                        )}
+                        {chatItems.map((n:any, idx:number) => (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              setChatOpen(false);
+                              (async () => {
+                                try {
+                                  const cid = String(n.conversationId||'');
+                                  if (!cid) return;
+                                  // If this is a rental chat notification, open chat-inbox and trigger rental thread open
+                                  if (String(n.kind||'') === 'rental') {
+                                    try { if (n._id) await markNotificationRead(String(n._id)); } catch {}
+                                    // Navigate to chat inbox and dispatch an event so ChatInbox can open the rental thread immediately
+                                    if (setCurrentPage) setCurrentPage('chat-inbox'); else {
+                                      const url = new URL(window.location.href); url.searchParams.set('page','chat-inbox'); window.location.href = url.toString();
+                                    }
+                                    try {
+                                      if (typeof window !== 'undefined') {
+                                        window.dispatchEvent(new CustomEvent('chat_incoming', { detail: { at: Date.now(), conversationId: cid, kind: 'rental' } }));
+                                      }
+                                    } catch {}
+                                    return;
+                                  }
+                                  // Otherwise, treat as service/project conversation
+                                  try { localStorage.setItem('chat_conversation_id', cid); } catch {}
+                                  const c = await getConversation(cid);
+                                  if (c.ok && c.data) {
+                                    const roleLower = role;
+                                    if (roleLower === 'vendor') {
+                                      const techId = String((c.data as any).technicianId || '');
+                                      const sid = String((c.data as any).serviceRequestId || '');
+                                      try { if (techId) localStorage.setItem('chat_technician_id', techId); } catch {}
+                                      try { if (sid) localStorage.setItem('chat_service_id', sid); } catch {}
+                                      if (setCurrentPage) setCurrentPage('vendor-chat'); else {
+                                        const url = new URL(window.location.href); url.searchParams.set('page','vendor-chat'); window.location.href = url.toString();
+                                      }
+                                    } else if (roleLower === 'worker' || roleLower === 'technician') {
+                                      const sid = String((c.data as any).serviceRequestId || '');
+                                      try { if (sid) localStorage.setItem('chat_service_id', sid); } catch {}
+                                      if (setCurrentPage) setCurrentPage('technician-chat'); else {
+                                        const url = new URL(window.location.href); url.searchParams.set('page','technician-chat'); window.location.href = url.toString();
+                                      }
+                                    } else {
+                                      // customers or other roles: go to project-chat
+                                      const pid = String((c.data as any).projectId || '');
+                                      try { if (pid) localStorage.setItem('project_chat_project_id', pid); } catch {}
+                                      if (setCurrentPage) setCurrentPage('project-chat'); else {
+                                        const url = new URL(window.location.href); url.searchParams.set('page','project-chat'); window.location.href = url.toString();
+                                      }
+                                    }
+                                  }
+                                } catch {}
+                              })();
+                            }}
+                            className="w-full text-left p-3 border rounded-md hover:bg-gray-50"
+                          >
+                            <div className="text-sm font-medium line-clamp-1">{n.title || (locale==='ar' ? 'رسالة دردشة' : 'Chat')}</div>
+                            {n.message && (
+                              <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{n.message}</div>
+                            )}
+                            {n.createdAt && (
+                              <div className="text-[11px] text-muted-foreground mt-1">
+                                {new Date(n.createdAt).toLocaleString(locale==='ar' ? 'ar-EG' : 'en-US')}
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="p-3 border-t">
+                        <Button className="w-full" onClick={() => { setChatOpen(false); if (setCurrentPage) setCurrentPage('chat-inbox'); else { const url=new URL(window.location.href); url.searchParams.set('page','chat-inbox'); window.location.href=url.toString(); } }}>
+                          {locale==='ar' ? 'فتح الدردشة' : 'Open Chat'}
                         </Button>
                       </div>
                     </PopoverContent>
