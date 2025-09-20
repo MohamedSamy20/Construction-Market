@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { useTranslation } from '../../hooks/useTranslation';
-import { getProducts, type ProductDto } from '@/services/products';
+import { getProducts, getAllCategories, type ProductDto } from '@/services/products';
 import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
 import { adminGetProducts, adminUpdateProduct, adminSetProductDiscount, approveProduct } from '@/services/admin';
+import { api } from '@/lib/api';
 
 export default function AdminOffers({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();
@@ -19,17 +20,63 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<any[]>([]);
 
   const [onlyOffers, setOnlyOffers] = useState<boolean>(false);
 
   const load = async () => {
     try {
       setLoading(true);
-      const r = await getProducts({ page: 1, pageSize: 500 });
-      const listAny = (r.data as any) || {};
+      // Test admin endpoint first
+      try {
+        const testRes = await api.get('/api/Admin/test', { auth: true });
+        console.log('Admin test endpoint response:', testRes);
+      } catch (testError) {
+        console.error('Admin test endpoint failed:', testError);
+      }
+      
+      // Load products and categories in parallel
+      let productsRes;
+      try {
+        productsRes = await adminGetProducts({ page: 1, pageSize: 500 });
+        console.log('Admin products response:', productsRes);
+      } catch (adminError) {
+        console.warn('Admin products failed, trying public endpoint:', adminError);
+        productsRes = await getProducts({ page: 1, pageSize: 500 });
+        console.log('Public products response:', productsRes);
+      }
+      
+      const categoriesRes = await getAllCategories();
+      
+      const listAny = (productsRes.data as any) || {};
       const raw = Array.isArray(listAny.items) ? listAny.items : (Array.isArray(listAny.Items) ? listAny.Items : []);
-      const list = raw as ProductDto[];
+      
+      // Map MongoDB _id to id for frontend compatibility and ensure all required fields
+      const list = raw.map((item: any, index: number) => {
+        console.log(`Processing item ${index}:`, item);
+        
+        const mappedItem = {
+          ...item,
+          id: item.id || item._id || String(item._id),
+          merchantId: String(item.merchantId?._id || item.merchantId),
+          categoryId: String(item.categoryId?._id || item.categoryId),
+          merchantName: item.merchantName || item.merchant?.name || null,
+          categoryName: item.categoryName || item.category?.nameEn || item.category?.nameAr || null,
+        };
+        
+        console.log(`Mapped item ${index}:`, mappedItem);
+        return mappedItem;
+      }) as ProductDto[];
+      
+      console.log('Raw response:', productsRes);
+      console.log('Processed list:', list);
+      console.log('Loaded products:', list.length, 'First product:', list[0]);
       setItems(list);
+      
+      // Set categories for Arabic display
+      const categoriesData = categoriesRes.data || [];
+      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      
       setError(null);
     } catch {
       setError(isAr ? 'تعذر جلب المنتجات' : 'Failed to fetch products');
@@ -41,9 +88,30 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
 
   const setDiscount = async (p: ProductDto, newDiscount: number | null) => {
     try {
+      // Validate product ID
+      console.log('Product object:', p);
+      console.log('Product ID:', p.id, 'Type:', typeof p.id);
+      console.log('Product _id:', (p as any)._id);
+      
+      if (!p.id || p.id === 'undefined' || p.id === 'null') {
+        console.error('Invalid product ID detected:', p);
+        throw new Error(isAr ? 'معرف المنتج غير صالح' : 'Invalid product ID');
+      }
+      
       setSavingId(p.id);
+      setError(null); // Clear any previous errors
+      console.log('Setting discount for product:', p.id, 'New discount:', newDiscount, 'Product:', p);
+      
+      // Validate discount value
+      if (newDiscount !== null && (newDiscount < 0 || newDiscount >= p.price)) {
+        throw new Error(isAr ? 'سعر الخصم يجب أن يكون أقل من السعر الأصلي وأكبر من صفر' : 'Discount price must be less than original price and greater than zero');
+      }
+      
       const res = await adminSetProductDiscount(p.id, newDiscount);
-      if (!res.ok && (res.status === 404 || res.status === 405)) {
+      console.log('Discount API response:', res);
+      
+      if (!res.ok) {
+        console.log('Discount API failed, trying fallback method. Status:', res.status, 'Response:', res);
         // Fallback: full update via adminUpdateProduct if discount endpoint missing on server
         const payload: any = {
           nameEn: p.nameEn,
@@ -59,11 +127,38 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
           rentPricePerDay: p.rentPricePerDay ?? null,
           attributes: (p.attributes || []).map(a => ({ nameEn: a.nameEn, nameAr: a.nameAr, valueEn: a.valueEn, valueAr: a.valueAr })),
         };
-        await adminUpdateProduct(p.id, payload);
-        if (!p.isApproved) { try { await approveProduct(p.id); } catch {} }
+        console.log('Fallback payload:', payload);
+        const updateRes = await adminUpdateProduct(p.id, payload);
+        console.log('Update product response:', updateRes);
+        
+        if (!updateRes.ok) {
+          throw new Error(`Failed to update product: ${updateRes.status} ${updateRes.error || 'Unknown error'}`);
+        }
+        
+        if (!p.isApproved) { 
+          try { 
+            await approveProduct(p.id);
+            console.log('Product approved successfully');
+          } catch (approveError) {
+            console.error('Failed to approve product:', approveError);
+          }
+        }
       }
+      
+      // Show success message
+      console.log('Discount saved successfully');
       await load();
-    } finally { setSavingId(null); }
+      
+    } catch (error: any) {
+      console.error('Error setting discount:', error);
+      const errorMessage = error.message || (isAr ? 'فشل في حفظ سعر الخصم' : 'Failed to save discount price');
+      setError(errorMessage);
+      
+      // Show error for 5 seconds then clear
+      setTimeout(() => setError(null), 5000);
+    } finally { 
+      setSavingId(null); 
+    }
   };
 
   return (
@@ -83,10 +178,42 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
         {loading ? (
           <Card><CardContent className="p-6 text-muted-foreground">{isAr ? 'جارٍ التحميل...' : 'Loading...'}</CardContent></Card>
         ) : error ? (
-          <Card><CardContent className="p-6 text-red-600">{error}</CardContent></Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="text-red-600 mb-2">{error}</div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                  setError(null);
+                  void load();
+                }}
+              >
+                {isAr ? 'إعادة المحاولة' : 'Retry'}
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <div className="space-y-3">
-            {(onlyOffers ? items.filter(p => typeof p.discountPrice==='number' && (p.discountPrice as number) > 0 && (p.discountPrice as number) < p.price) : items).map((p) => {
+            {(() => {
+              const filteredItems = onlyOffers 
+                ? items.filter(p => typeof p.discountPrice==='number' && (p.discountPrice as number) > 0 && (p.discountPrice as number) < p.price) 
+                : items;
+              
+              if (filteredItems.length === 0) {
+                return (
+                  <Card>
+                    <CardContent className="p-6 text-center text-muted-foreground">
+                      {onlyOffers 
+                        ? (isAr ? 'لا توجد منتجات عليها عروض حالياً' : 'No products with offers currently')
+                        : (isAr ? 'لا توجد منتجات' : 'No products found')
+                      }
+                    </CardContent>
+                  </Card>
+                );
+              }
+              
+              return filteredItems.map((p) => {
               const discounted = typeof p.discountPrice === 'number' && p.discountPrice! > 0 && p.discountPrice! < p.price;
               return (
                 <Card key={p.id}>
@@ -97,19 +224,19 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
                       </span>
                       <div className="flex items-center gap-2 text-sm">
                         {discounted ? (
-                          <>
-                            <span className="text-primary font-semibold">
+                          <React.Fragment key={`price-${p.id}`}>
+                            <span key={`discount-${p.id}`} className="text-primary font-semibold">
                               {currency} {Number(p.discountPrice).toLocaleString(isAr?'ar-EG':'en-US')}
                             </span>
-                            <span className="line-through text-muted-foreground">
+                            <span key={`original-${p.id}`} className="line-through text-muted-foreground">
                               {currency} {Number(p.price).toLocaleString(isAr?'ar-EG':'en-US')}
                             </span>
-                            <span className="text-green-600 text-xs">
+                            <span key={`percentage-${p.id}`} className="text-green-600 text-xs">
                               -{Math.round(100 - (Number(p.discountPrice!)/Number(p.price))*100)}%
                             </span>
-                          </>
+                          </React.Fragment>
                         ) : (
-                          <span className="text-muted-foreground">{currency} {Number(p.price).toLocaleString(isAr?'ar-EG':'en-US')}</span>
+                          <span key={`regular-price-${p.id}`} className="text-muted-foreground">{currency} {Number(p.price).toLocaleString(isAr?'ar-EG':'en-US')}</span>
                         )}
                       </div>
                     </CardTitle>
@@ -126,14 +253,32 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
                       </div>
                       <div className="flex-1 min-w-0 space-y-2">
                         <div className="text-sm text-muted-foreground flex flex-wrap gap-3">
-                          <span>{isAr? 'الفئة:' : 'Category:'} {p.categoryName}</span>
-                          <span>{isAr? 'المخزون:' : 'Stock:'} {p.stockQuantity}</span>
-                          <span>{isAr? 'التاجر:' : 'Merchant:'} {p.merchantName || p.merchantId}</span>
+                          <span key={`category-${p.id}`}>{isAr? 'الفئة:' : 'Category:'} {
+                            (() => {
+                              // First try populated data from backend
+                              if (isAr && (p as any).categoryNameAr) return (p as any).categoryNameAr;
+                              if (!isAr && p.categoryName) return p.categoryName;
+                              
+                              // Fallback to categories list
+                              const category = categories.find(c => c.id === p.categoryId);
+                              if (category) return isAr ? category.nameAr : category.nameEn;
+                              
+                              // Final fallback
+                              return p.categoryName || (isAr ? 'غير محدد' : 'Unknown');
+                            })()
+                          }</span>
+                          <span key={`stock-${p.id}`}>{isAr? 'المخزون:' : 'Stock:'} {p.stockQuantity}</span>
+                          <span key={`merchant-${p.id}`}>{isAr? 'التاجر:' : 'Merchant:'} {
+                            p.merchantName && p.merchantName.trim() !== '' && p.merchantName !== p.merchantId 
+                              ? p.merchantName 
+                              : (isAr ? 'غير محدد' : 'Unknown')
+                          }</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Input
                             type="number"
                             step="any"
+                            key={`discount-${p.id}-${p.discountPrice || 'none'}`}
                             defaultValue={discounted ? String(p.discountPrice) : ''}
                             placeholder={isAr ? 'سعر الخصم' : 'Discount price'}
                             onChange={(e)=>{ (p as any)._newDiscount = e.target.value; }}
@@ -160,7 +305,8 @@ export default function AdminOffers({ setCurrentPage, ...context }: Partial<Rout
                   </CardContent>
                 </Card>
               );
-            })}
+              });
+            })()}
           </div>
         )}
       </div>

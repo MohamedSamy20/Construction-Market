@@ -76,7 +76,7 @@ export async function adminGetProducts(filter: { page?: number; pageSize?: numbe
 }
 
 export async function adminSetProductDiscount(id: string | number, discountPrice: number | null) {
-  return api.put(`/api/Admin/products/${String(id)}/discount`, { discountPrice }, { auth: true });
+  return api.post(`/api/Admin/products/${String(id)}/discount`, { discountPrice }, { auth: true });
 }
 
 export async function approveService(serviceId: string) {
