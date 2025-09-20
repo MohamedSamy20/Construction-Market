@@ -1,12 +1,80 @@
 import mongoose from 'mongoose';
 import { Rental } from '../models/Rental.js';
+import { Product } from '../models/Product.js';
 import { RentalMessage } from '../models/RentalMessage.js';
+import { RentalMessageTechnician } from '../models/RentalMessageTechnician.js';
 import { Notification } from '../models/Notification.js';
 import { body, validationResult } from 'express-validator';
 
 export async function listMine(req, res) {
   const items = await Rental.find({ customerId: req.user._id }).sort({ createdAt: -1 });
   res.json(items);
+}
+
+// Vendor-specific: recent technician-channel messages for rentals that belong to this vendor (by product.merchantId)
+export async function myVendorRecentTechMessages(req, res) {
+  try {
+    console.log('[myVendorRecentTechMessages] Called by user:', req.user._id, 'role:', req.user.role);
+
+    // Find products owned by vendor
+    const products = await Product.find({ merchantId: req.user._id }).select('_id').lean();
+    const productIdStrings = products.map(p => String(p._id));
+    const productIds = productIdStrings.map(id => new mongoose.Types.ObjectId(id));
+    console.log('[myVendorRecentTechMessages] products=', products.length, 'productIds.len=', productIds.length);
+    if (productIds.length === 0) {
+      console.log('[myVendorRecentTechMessages] No products found for vendor; falling back to authored tech messages only (if any)');
+    }
+
+    // Primary path: rentals that reference those products (ObjectId match)
+    let rentals = await Rental.find({ productId: { $in: productIds } }).select('_id productId').lean();
+    console.log('[myVendorRecentTechMessages] rentals(primary)=', rentals.length);
+
+    // Secondary path: if primary returned none (or very few), derive from messages then filter by rental.productId in vendor's products
+    if (!rentals || rentals.length === 0) {
+      console.log('[myVendorRecentTechMessages] Primary path returned 0, trying secondary path');
+      const m = await RentalMessageTechnician.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $group: { _id: "$rentalId", at: { $first: "$createdAt" } } },
+        { $limit: 200 }
+      ]);
+      const candIds = m.map(x => new mongoose.Types.ObjectId(String(x._id)));
+      rentals = await Rental.find({ _id: { $in: candIds }, productId: { $in: productIds } }).select('_id productId').lean();
+      console.log('[myVendorRecentTechMessages] rentals(secondary)=', rentals.length);
+      if (!rentals || rentals.length === 0) {
+        console.log('[myVendorRecentTechMessages] Secondary path also returned 0');
+      }
+    }
+
+    const vendorOwnedIds = rentals.map(r => new mongoose.Types.ObjectId(String(r._id)));
+    // Also include rentals where this vendor authored any tech message (participated)
+    let authoredIdsRaw = [];
+    try {
+      authoredIdsRaw = await RentalMessageTechnician.distinct('rentalId', { fromUserId: req.user._id });
+    } catch {}
+    const authoredIds = authoredIdsRaw.map(id => new mongoose.Types.ObjectId(String(id)));
+    const candidateIds = Array.from(new Set([ ...vendorOwnedIds, ...authoredIds ].map(x => String(x)))).map(id => new mongoose.Types.ObjectId(id));
+    console.log('[myVendorRecentTechMessages] vendorOwnedIds.len=', vendorOwnedIds.length, 'authoredIds.len=', authoredIds.length, 'candidateIds.len=', candidateIds.length);
+
+    if (candidateIds.length === 0) {
+      res.set('Cache-Control','no-store');
+      return res.json([]);
+    }
+
+    // Aggregate latest tech-channel message per candidate rentalId
+    const msgs = await RentalMessageTechnician.aggregate([
+      { $match: { rentalId: { $in: candidateIds } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
+      { $sort: { at: -1 } },
+      { $limit: 20 }
+    ]);
+    console.log('[myVendorRecentTechMessages] msgs found=', msgs.length);
+    res.set('Cache-Control','no-store');
+    return res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
+  } catch (e) {
+    console.error('[myVendorRecentTechMessages] failed', e);
+    return res.json([]);
+  }
 }
 
 export const validateCreateRental = [
@@ -166,6 +234,18 @@ export async function sendMessage(req, res) {
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const rentalId = req.params.id;
   const { name, phone, message } = req.body || {};
+  // Route by role: technicians/workers/vendors -> tech channel, customers -> user channel
+  const role = String(req.user?.role || '');
+  if (/technician|worker|merchant|vendor/i.test(role)) {
+    try {
+      const rid = new mongoose.Types.ObjectId(String(rentalId));
+      const doc = await RentalMessageTechnician.create({ rentalId: rid, name, phone, message, fromUserId: req.user?._id });
+      return res.json({ success: true, id: doc._id, channel: 'tech' });
+    } catch (e) {
+      try { console.error('[sendMessage->tech] failed', e); } catch {}
+      return res.status(400).json({ success: false, message: 'Failed to save tech message' });
+    }
+  }
   await RentalMessage.create({ rentalId, name, phone, message, fromUserId: req.user?._id });
   try {
     const r = await Rental.findById(rentalId).select('customerId').lean();
@@ -192,6 +272,18 @@ export async function replyMessage(req, res) {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const { message, toEmail } = req.body || {};
+  // Route by role
+  const role = String(req.user?.role || '');
+  if (/technician|worker|merchant|vendor/i.test(role)) {
+    try {
+      const rid = new mongoose.Types.ObjectId(String(req.params.id));
+      const doc = await RentalMessageTechnician.create({ rentalId: rid, message, toEmail, fromUserId: req.user?._id });
+      return res.json({ success: true, id: doc._id, channel: 'tech' });
+    } catch (e) {
+      try { console.error('[replyMessage->tech] failed', e); } catch {}
+      return res.status(400).json({ success: false, message: 'Failed to save tech reply' });
+    }
+  }
   await RentalMessage.create({ rentalId: req.params.id, message, toEmail, fromUserId: req.user?._id });
   try {
     const r = await Rental.findById(req.params.id).select('customerId').lean();
@@ -266,36 +358,14 @@ export async function myRecentMessages(req, res) {
 // Recent rentals where current user AND at least one worker/technician both participated
 export async function myRecentTechMessages(req, res) {
   try {
-    // Gather rentalIds the current user participated in
-    const authoredIds = await RentalMessage.distinct('rentalId', { fromUserId: req.user._id });
+    // Gather rentalIds the current user participated in (tech channel)
+    const authoredIds = await RentalMessageTechnician.distinct('rentalId', { fromUserId: req.user._id });
     if (!authoredIds || authoredIds.length === 0) return res.json([]);
 
-    // For each rental, collect unique participant userIds
     const ids = authoredIds.map(id => new mongoose.Types.ObjectId(String(id)));
-    const participants = await RentalMessage.aggregate([
+    // Return latest message per rentalId from tech channel without role-based participant filtering
+    const msgs = await RentalMessageTechnician.aggregate([
       { $match: { rentalId: { $in: ids } } },
-      { $group: { _id: "$rentalId", users: { $addToSet: "$fromUserId" } } },
-    ]);
-
-    // Fetch roles of all users involved once
-    const allUserIds = Array.from(new Set(participants.flatMap(p => (p.users || []).map(u => String(u)))));
-    const users = await (await import('../models/User.js')).User.find({ _id: { $in: allUserIds } }).select('_id role').lean();
-    const roleMap = new Map(users.map(u => [String(u._id), String(u.role || '')]));
-
-    // Filter rentalIds where there exists a worker/technician besides current user
-    const techRentalIds = participants
-      .filter(p => {
-        const list = (p.users || []).map(u => String(u));
-        if (!list.includes(String(req.user._id))) return false;
-        return list.some(uid => uid !== String(req.user._id) && ['Worker','Technician','worker','technician'].includes(String(roleMap.get(uid) || '')));
-      })
-      .map(p => p._id);
-
-    if (techRentalIds.length === 0) return res.json([]);
-
-    // Return latest message per filtered rentalId
-    const msgs = await RentalMessage.aggregate([
-      { $match: { rentalId: { $in: techRentalIds } } },
       { $sort: { createdAt: -1 } },
       { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
       { $sort: { at: -1 } },
@@ -305,5 +375,50 @@ export async function myRecentTechMessages(req, res) {
     res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
   } catch (e) {
     return res.json([]);
+  }
+}
+
+// Technician channel messages (vendor ↔ technician)
+export async function sendTechMessage(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+  const rentalId = req.params.id;
+  const { name, phone, message } = req.body || {};
+  // Disallow customers from using tech channel
+  try {
+    const role = String(req.user?.role || '');
+    if (/customer/i.test(role)) return res.status(403).json({ success: false, message: 'Customers cannot use tech channel' });
+  } catch {}
+  try {
+    const rid = new mongoose.Types.ObjectId(String(rentalId));
+    const doc = await RentalMessageTechnician.create({ rentalId: rid, name, phone, message, fromUserId: req.user?._id });
+    return res.json({ success: true, id: doc._id });
+  } catch (e) {
+    try { console.error('[sendTechMessage] failed', e); } catch {}
+    return res.status(400).json({ success: false, message: 'Failed to save tech message' });
+  }
+}
+
+export async function listTechMessages(req, res) {
+  const messages = await RentalMessageTechnician.find({ rentalId: req.params.id }).sort({ createdAt: -1 }).limit(200);
+  res.json(messages.map(m => ({ id: m._id, message: m.message, at: m.createdAt, from: m.fromUserId })));
+}
+
+export async function replyTechMessage(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+  const { message, toEmail } = req.body || {};
+  // Disallow customers from using tech channel
+  try {
+    const role = String(req.user?.role || '');
+    if (/customer/i.test(role)) return res.status(403).json({ success: false, message: 'Customers cannot use tech channel' });
+  } catch {}
+  try {
+    const rid = new mongoose.Types.ObjectId(String(req.params.id));
+    const doc = await RentalMessageTechnician.create({ rentalId: rid, message, toEmail, fromUserId: req.user?._id });
+    return res.json({ success: true, id: doc._id });
+  } catch (e) {
+    try { console.error('[replyTechMessage] failed', e); } catch {}
+    return res.status(400).json({ success: false, message: 'Failed to save tech reply' });
   }
 }

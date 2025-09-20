@@ -1,5 +1,6 @@
 import { ChatConversation } from '../models/ChatConversation.js';
 import { ChatMessage } from '../models/ChatMessage.js';
+import { MessageService } from '../models/MessageService.js';
 import { Service } from '../models/Service.js';
 import { Notification } from '../models/Notification.js';
 
@@ -62,7 +63,7 @@ export async function getConversationByKeys(req, res) {
 }
 
 export async function listMessages(req, res) {
-  const messages = await ChatMessage.find({ conversationId: req.params.id }).sort({ createdAt: 1 });
+  const messages = await MessageService.find({ conversationId: req.params.id }).sort({ createdAt: 1 });
   res.json(messages.map(m => ({ id: m._id, from: String(m.fromUserId), text: m.text, createdAt: m.createdAt })));
 }
 
@@ -71,7 +72,8 @@ export async function sendMessage(req, res) {
   const conv = await ChatConversation.findById(req.params.id);
   if (!conv) return res.status(404).json({ success: false, message: 'Conversation not found' });
   // Allow either side to send first message now
-  const msg = await ChatMessage.create({ conversationId: req.params.id, fromUserId: req.user._id, text });
+  const msg = await MessageService.create({ conversationId: req.params.id, fromUserId: req.user._id, text });
+  try { await ChatConversation.updateOne({ _id: conv._id }, { $set: { updatedAt: new Date() } }); } catch {}
   // Create a notification for the other participant
   try {
     const from = String(req.user?._id || '');
