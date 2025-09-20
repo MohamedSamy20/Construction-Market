@@ -134,8 +134,26 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
       if (!file) return;
       const up = await api.uploadFile(file, 'avatars');
       if (up.ok && up.data && (up.data as any).url) {
-        setEditedUser((prev) => ({ ...prev, avatar: String((up.data as any).url) }));
-        toastSuccess('تم رفع الصورة', true);
+        const url = String((up.data as any).url);
+        setEditedUser((prev) => ({ ...prev, avatar: url }));
+        // Persist immediately to backend so it remains after reload
+        try {
+          await updateProfile({ profilePicture: url } as any);
+          // Optionally refresh canonical profile
+          try {
+            const res = await getProfile();
+            if (res.ok && res.data) {
+              const d: any = res.data;
+              setEditedUser((prev)=> ({ ...prev, avatar: d.profilePicture || d.imageUrl || url }));
+              // sync Router user as well
+              setUser?.({ ...(user as any), id: String(d.id || (user as any)?.id || ''), name: String(d.name || (user as any)?.name || ''), email: String(d.email || (user as any)?.email || ''), role: (user as any)?.role || 'customer', avatar: d.profilePicture || d.imageUrl || url } as any);
+            }
+          } catch {}
+          toastSuccess('تم تحديث الصورة', true);
+        } catch {
+          // If backend save failed, keep local preview but inform user
+          toastError('تم رفع الصورة لكن تعذر الحفظ، حاول مرة أخرى من حفظ الملف', true);
+        }
       } else {
         toastError('تعذر رفع الصورة', true);
       }
@@ -737,33 +755,29 @@ export default function UserProfile({ user, setUser, setCurrentPage, wishlistIte
           <div className="lg:col-span-1">
             <Card>
               <CardContent className="p-6 text-center">
-                <div
-                  className={`relative inline-block ${isEditing ? 'cursor-pointer group' : ''}`}
-                  onClick={() => { if (isEditing) avatarFileRef.current?.click(); }}
-                >
+                <div className="relative inline-block">
                   <Avatar className="w-28 h-28 mx-auto mb-4 ring-2 ring-primary/20">
                     <AvatarImage src={editedUser.avatar} />
                     <AvatarFallback className="text-xl">
                       {editedUser.name?.charAt(0) || 'أ'}
                     </AvatarFallback>
                   </Avatar>
-                  {isEditing && (
-                    <>
-                      <input
-                        ref={avatarFileRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAvatarFilePick}
-                        className="hidden"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition bg-black/30 text-white">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <Camera className="h-4 w-4" />
-                          <span>{locale==='en' ? 'Change photo' : 'تغيير الصورة'}</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
+                  <input
+                    ref={avatarFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFilePick}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => avatarFileRef.current?.click()}
+                    className="absolute bottom-1 right-1 rounded-full bg-white border shadow p-2 hover:bg-gray-50"
+                    aria-label={locale==='en' ? 'Edit photo' : 'تعديل الصورة'}
+                    title={locale==='en' ? 'Edit photo' : 'تعديل الصورة'}
+                  >
+                    <Edit className="h-4 w-4 text-gray-700" />
+                  </button>
                 </div>
                 
                 <h2 className="text-xl font-medium mb-2">{[editedUser.firstName, editedUser.middleName, editedUser.lastName].filter(Boolean).join(' ') || editedUser.name}</h2>

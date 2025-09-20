@@ -226,6 +226,7 @@ export default function ProductListing({
             const brandEn = String(brandAttr?.valueEn || brandAttr?.valueAr || '').trim();
             return ({
               id: idStr,
+              slug: (p as any).slug || undefined,
               group: 'tools',
               name: { ar: p.nameAr || '', en: p.nameEn || '' },
               brand: { ar: brandAr || 'عام', en: brandEn || 'Generic' },
@@ -246,6 +247,7 @@ export default function ProductListing({
               description: { ar: (p as any).descriptionAr || '', en: (p as any).descriptionEn || '' },
             })
           });
+          try { if (backendList.length) console.debug('[products] sample id/slug', backendList[0]?.id, backendList[0]?.slug); } catch {}
           if (!cancelled) {
             const cleaned = backendList.filter((p:any) => !!p.id && p.id !== 'undefined' && p.id !== 'null');
             setProducts(cleaned);
@@ -703,14 +705,6 @@ export default function ProductListing({
                 className="pr-10"
               />
             </div>
-            <Button
-              variant="outline"
-              onClick={() => setShowFilters(!showFilters)}
-              className="lg:hidden border-gray-300 text-gray-900 bg-white hover:bg-gray-100"
-            >
-              <Filter className="h-4 w-4 ml-2" />
-              {t("filter")}
-            </Button>
           </div>
 
           <div className="flex gap-2">

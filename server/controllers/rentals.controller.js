@@ -1,5 +1,7 @@
+import mongoose from 'mongoose';
 import { Rental } from '../models/Rental.js';
 import { RentalMessage } from '../models/RentalMessage.js';
+import { Notification } from '../models/Notification.js';
 import { body, validationResult } from 'express-validator';
 
 export async function listMine(req, res) {
@@ -165,6 +167,19 @@ export async function sendMessage(req, res) {
   const rentalId = req.params.id;
   const { name, phone, message } = req.body || {};
   await RentalMessage.create({ rentalId, name, phone, message, fromUserId: req.user?._id });
+  try {
+    const r = await Rental.findById(rentalId).select('customerId').lean();
+    if (r && String(req.user?._id) !== String(r.customerId)) {
+      // Sender is not the customer -> notify the customer
+      await Notification.create({
+        userId: r.customerId,
+        type: 'chat.message',
+        title: 'Rental chat',
+        message: String(message || ''),
+        data: { conversationId: rentalId, kind: 'rental' },
+      });
+    }
+  } catch {}
   res.json({ success: true });
 }
 
@@ -178,6 +193,18 @@ export async function replyMessage(req, res) {
   if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
   const { message, toEmail } = req.body || {};
   await RentalMessage.create({ rentalId: req.params.id, message, toEmail, fromUserId: req.user?._id });
+  try {
+    const r = await Rental.findById(req.params.id).select('customerId').lean();
+    if (r && String(req.user?._id) !== String(r.customerId)) {
+      await Notification.create({
+        userId: r.customerId,
+        type: 'chat.message',
+        title: 'Rental chat',
+        message: String(message || ''),
+        data: { conversationId: req.params.id, kind: 'rental' },
+      });
+    }
+  } catch {}
   res.json({ success: true });
 }
 
@@ -188,8 +215,15 @@ export async function vendorMessageCount(req, res) {
 }
 
 export async function vendorRecentMessages(req, res) {
-  const msgs = await RentalMessage.find({}).sort({ createdAt: -1 }).limit(10);
-  res.json(msgs.map(m => ({ conversationId: String(m.rentalId), projectId: null, message: m.message, at: m.createdAt, from: String(m.fromUserId || '') })));
+  // Note: Rentals schema does not include vendorId; we return latest per rental globally
+  const msgs = await RentalMessage.aggregate([
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
+    { $sort: { at: -1 } },
+    { $limit: 20 }
+  ]);
+  res.set('Cache-Control','no-store');
+  res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
 }
 
 export async function customerMessageCount(req, res) {
@@ -198,6 +232,78 @@ export async function customerMessageCount(req, res) {
 }
 
 export async function customerRecentMessages(req, res) {
-  const msgs = await RentalMessage.find({ fromUserId: req.user._id }).sort({ createdAt: -1 }).limit(10);
-  res.json(msgs.map(m => ({ conversationId: String(m.rentalId), projectId: null, message: m.message, at: m.createdAt, from: String(m.fromUserId || '') })));
+  // Include rentals owned by the customer AND rentals where the customer authored any message
+  const rentals = await Rental.find({ customerId: req.user._id }).select('_id').lean();
+  const ownedIds = rentals.map(r => r._id);
+  const authoredIds = await RentalMessage.distinct('rentalId', { fromUserId: req.user._id });
+  const allIds = Array.from(new Set([ ...ownedIds.map(String), ...authoredIds.map(String) ])).map(id => new mongoose.Types.ObjectId(id));
+  if (allIds.length === 0) return res.json([]);
+  const msgs = await RentalMessage.aggregate([
+    { $match: { rentalId: { $in: allIds } } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
+    { $sort: { at: -1 } },
+    { $limit: 20 }
+  ]);
+  res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
+}
+
+// Recent rentals where current user authored messages (works for vendor/technician/any role)
+export async function myRecentMessages(req, res) {
+  const authoredIds = await RentalMessage.distinct('rentalId', { fromUserId: req.user._id });
+  if (!authoredIds || authoredIds.length === 0) return res.json([]);
+  const ids = authoredIds.map(id => new mongoose.Types.ObjectId(String(id)));
+  const msgs = await RentalMessage.aggregate([
+    { $match: { rentalId: { $in: ids } } },
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
+    { $sort: { at: -1 } },
+    { $limit: 20 }
+  ]);
+  res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
+}
+
+// Recent rentals where current user AND at least one worker/technician both participated
+export async function myRecentTechMessages(req, res) {
+  try {
+    // Gather rentalIds the current user participated in
+    const authoredIds = await RentalMessage.distinct('rentalId', { fromUserId: req.user._id });
+    if (!authoredIds || authoredIds.length === 0) return res.json([]);
+
+    // For each rental, collect unique participant userIds
+    const ids = authoredIds.map(id => new mongoose.Types.ObjectId(String(id)));
+    const participants = await RentalMessage.aggregate([
+      { $match: { rentalId: { $in: ids } } },
+      { $group: { _id: "$rentalId", users: { $addToSet: "$fromUserId" } } },
+    ]);
+
+    // Fetch roles of all users involved once
+    const allUserIds = Array.from(new Set(participants.flatMap(p => (p.users || []).map(u => String(u)))));
+    const users = await (await import('../models/User.js')).User.find({ _id: { $in: allUserIds } }).select('_id role').lean();
+    const roleMap = new Map(users.map(u => [String(u._id), String(u.role || '')]));
+
+    // Filter rentalIds where there exists a worker/technician besides current user
+    const techRentalIds = participants
+      .filter(p => {
+        const list = (p.users || []).map(u => String(u));
+        if (!list.includes(String(req.user._id))) return false;
+        return list.some(uid => uid !== String(req.user._id) && ['Worker','Technician','worker','technician'].includes(String(roleMap.get(uid) || '')));
+      })
+      .map(p => p._id);
+
+    if (techRentalIds.length === 0) return res.json([]);
+
+    // Return latest message per filtered rentalId
+    const msgs = await RentalMessage.aggregate([
+      { $match: { rentalId: { $in: techRentalIds } } },
+      { $sort: { createdAt: -1 } },
+      { $group: { _id: "$rentalId", latest: { $first: "$message" }, at: { $first: "$createdAt" }, from: { $first: "$fromUserId" } } },
+      { $sort: { at: -1 } },
+      { $limit: 20 }
+    ]);
+    res.set('Cache-Control','no-store');
+    res.json(msgs.map(m => ({ conversationId: String(m._id), projectId: null, message: m.latest, at: m.at, from: String(m.from || '') })));
+  } catch (e) {
+    return res.json([]);
+  }
 }

@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect, requireRoles } from '../middlewares/auth.js';
-import { listMine, listPublic, listAll, getById, create, update, remove, adjustDays, sendMessage, listMessages, replyMessage, vendorMessageCount, vendorRecentMessages, customerMessageCount, customerRecentMessages, validateCreateRental, validateUpdateRental, validateAdjustDays, validateRentalMessage, validateRentalReply, adminApprove, adminDecline, adminRemove } from '../controllers/rentals.controller.js';
+import { listMine, listPublic, listAll, getById, create, update, remove, adjustDays, sendMessage, listMessages, replyMessage, vendorMessageCount, vendorRecentMessages, customerMessageCount, customerRecentMessages, myRecentMessages, myRecentTechMessages, validateCreateRental, validateUpdateRental, validateAdjustDays, validateRentalMessage, validateRentalReply, adminApprove, adminDecline, adminRemove } from '../controllers/rentals.controller.js';
 
 const router = express.Router();
 
@@ -10,6 +10,8 @@ router.get('/message-count', protect, vendorMessageCount);
 router.get('/messages/recent', protect, vendorRecentMessages);
 router.get('/customer/message-count', protect, customerMessageCount);
 router.get('/customer/messages/recent', protect, customerRecentMessages);
+router.get('/my/messages/recent', protect, myRecentMessages);
+router.get('/my/messages/tech/recent', protect, myRecentTechMessages);
 
 // Admin pending must be before dynamic :id
 router.get('/pending', protect, requireRoles('Admin'), listPublic);
@@ -23,7 +25,7 @@ router.post('/', protect, validateCreateRental, create);
 router.put('/:id', protect, validateUpdateRental, update);
 router.delete('/:id', protect, remove);
 router.post('/:id/adjust-days', protect, validateAdjustDays, adjustDays);
-router.post('/:id/message', validateRentalMessage, sendMessage);
+router.post('/:id/message', protect, validateRentalMessage, sendMessage);
 router.get('/:id/messages', protect, listMessages);
 router.post('/:id/reply', protect, validateRentalReply, replyMessage);
 

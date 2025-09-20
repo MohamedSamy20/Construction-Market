@@ -77,7 +77,7 @@ export async function adjustRentalDays(id: string | number, days: number) {
 
 export type SendMessageInput = { name?: string; phone?: string; message: string };
 export async function sendRentalMessage(id: string | number, input: SendMessageInput) {
-  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/message`, input);
+  return api.post(`/api/Rentals/${encodeURIComponent(String(id))}/message`, input, { auth: true });
 }
 
 export async function listRentalMessages(id: string | number) {
@@ -127,4 +127,14 @@ export async function getCustomerMessageCount() {
 
 export async function getCustomerRecentMessages() {
   return api.get(`/api/Rentals/customer/messages/recent`, { auth: true });
+}
+
+// Recent rentals where current user authored messages (technician/vendor)
+export async function getMyRecentMessages() {
+  return api.get(`/api/Rentals/my/messages/recent`, { auth: true });
+}
+
+// Recent rentals where current user AND a technician/worker both participated
+export async function getMyRecentTechMessages() {
+  return api.get(`/api/Rentals/my/messages/tech/recent`, { auth: true });
 }
