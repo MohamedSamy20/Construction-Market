@@ -2,16 +2,14 @@ import { RouteContext } from '../../components/Router';
 import Header from '../../components/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { useTranslation } from '../../hooks/useTranslation';
-import { Package, Wrench, Users, Truck } from 'lucide-react';
+import { Package, Users } from 'lucide-react';
 
 export default function AdminSections(props: Partial<RouteContext>) {
-  const { t, locale } = useTranslation();
+  const { locale } = useTranslation();
 
   const sections = [
     { key: 'products', labelAr: 'قسم المنتجات', labelEn: 'Products Section', icon: Package },
-    { key: 'services', labelAr: 'قسم الخدمات', labelEn: 'Services Section', icon: Wrench },
     { key: 'technicians', labelAr: 'قسم الفنيين', labelEn: 'Technicians Section', icon: Users },
-    { key: 'rentals', labelAr: 'قسم التأجير', labelEn: 'Rentals Section', icon: Truck },
   ];
 
   return (
@@ -34,12 +32,8 @@ export default function AdminSections(props: Partial<RouteContext>) {
                 onClick={() => {
                   if (s.key === 'products') {
                     props.setCurrentPage && props.setCurrentPage('admin-sections-products');
-                  } else if (s.key === 'services') {
-                    props.setCurrentPage && props.setCurrentPage('admin-sections-services');
                   } else if (s.key === 'technicians') {
                     props.setCurrentPage && props.setCurrentPage('admin-sections-technicians');
-                  } else if (s.key === 'rentals') {
-                    props.setCurrentPage && props.setCurrentPage('admin-sections-rentals');
                   }
                 }}
               >

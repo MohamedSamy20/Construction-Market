@@ -79,7 +79,14 @@ export type ProjectCatalog = {
     en?: string; ar?: string;
     basePricePerM2?: number;
     dimensions?: { width?: boolean; height?: boolean; length?: boolean };
-    subtypes?: Array<{ id: string; en?: string; ar?: string }>;
+    // Subtypes may optionally provide their own materials list
+    // Each material can also include an optional pricePerM2 that overrides base pricing
+    subtypes?: Array<{
+      id: string;
+      en?: string; ar?: string;
+      materials?: Array<{ id: string; en?: string; ar?: string; pricePerM2?: number }>;
+    }>;
+    // Legacy/product-level materials may still be present
     materials?: Array<{ id: string; en?: string; ar?: string }>;
     colors?: Array<{ id: string; en?: string; ar?: string }>;
     accessories?: Array<{ id: string; en?: string; ar?: string; price?: number }>;

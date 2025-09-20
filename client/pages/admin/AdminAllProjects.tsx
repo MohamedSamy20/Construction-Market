@@ -8,9 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
-import { getProjects, type ProjectDto } from '@/services/projects';
+import { getProjects, deleteProject, type ProjectDto } from '@/services/projects';
 import { Eye, RefreshCw } from 'lucide-react';
 import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
+import { toastError, toastSuccess, confirmDialog } from '../../utils/alerts';
 
 const STATUS_OPTIONS = [
   { id: 'all', ar: 'الكل', en: 'All' },
@@ -129,9 +130,6 @@ export default function AdminAllProjects({ setCurrentPage, ...context }: Partial
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button className="w-full" onClick={() => void load()}>{isAr ? 'تطبيق' : 'Apply'}</Button>
-            </div>
           </CardContent>
         </Card>
 
@@ -146,11 +144,19 @@ export default function AdminAllProjects({ setCurrentPage, ...context }: Partial
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
-                {filtered.map((p: any) => {
+                {filtered.map((p: any, idx: number) => {
                   const st = normalizeStatus(p.status ?? p.Status);
                   const variant = statusBadgeVariant(st);
                   return (
-                    <div key={p.id} className="p-4 flex items-start justify-between gap-4">
+                    <div
+                      key={`${p.id ?? p._id ?? 'row'}-${idx}`}
+                      className="p-4 flex items-start justify-between gap-4 cursor-pointer hover:bg-accent/30"
+                      onClick={() => {
+                        try { window.localStorage.setItem('admin_selected_project_id', String(p.id ?? p._id)); } catch {}
+                        setCurrentPage && setCurrentPage('admin-project-details');
+                        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+                      }}
+                    >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate max-w-[60vw]">{p.title || (isAr ? 'مشروع' : 'Project')}</span>
@@ -168,13 +174,32 @@ export default function AdminAllProjects({ setCurrentPage, ...context }: Partial
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            try { window.localStorage.setItem('admin_selected_project_id', String(p.id)); } catch {}
-                            setCurrentPage && setCurrentPage('admin-project-details');
-                            try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            // Confirm deletion
+                            const ok = await confirmDialog(
+                              isAr ? 'هل أنت متأكد من حذف هذا المشروع؟ لا يمكن التراجع.' : 'Delete this project? This cannot be undone.',
+                              isAr ? 'حذف' : 'Delete',
+                              isAr ? 'إلغاء' : 'Cancel',
+                              isAr
+                            );
+                            if (!ok) return;
+                            try {
+                              const r = await deleteProject(p.id ?? p._id);
+                              if (r.ok) {
+                                toastSuccess(isAr ? 'تم حذف المشروع' : 'Project deleted', isAr);
+                                void load();
+                              } else {
+                                const errorMsg = (r as any).error?.message || (r as any).error || 'Failed to delete project';
+                                toastError(isAr ? `فشل حذف المشروع: ${errorMsg}` : `Failed to delete project: ${errorMsg}`, isAr);
+                              }
+                            } catch (error: any) {
+                              const errorMsg = error?.message || 'Failed to delete project';
+                              toastError(isAr ? `فشل حذف المشروع: ${errorMsg}` : `Failed to delete project: ${errorMsg}`, isAr);
+                            }
                           }}
                         >
-                          <Eye className="w-4 h-4 mr-1" /> {isAr ? 'التفاصيل' : 'Details'}
+                          {isAr ? 'حذف' : 'Delete'}
                         </Button>
                       </div>
                     </div>

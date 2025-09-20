@@ -7,7 +7,7 @@ import { Input } from '../../components/ui/input';
 import { useTranslation } from '../../hooks/useTranslation';
 import { getProducts, type ProductDto } from '@/services/products';
 import { useFirstLoadOverlay } from '../../hooks/useFirstLoadOverlay';
-import { adminSetProductDiscount, adminUpdateProduct, approveProduct } from '@/services/admin';
+import { adminGetProducts, adminUpdateProduct, adminSetProductDiscount, approveProduct } from '@/services/admin';
 
 export default function AdminOffers({ setCurrentPage, ...context }: Partial<RouteContext>) {
   const { locale } = useTranslation();

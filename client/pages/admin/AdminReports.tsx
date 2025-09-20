@@ -44,15 +44,22 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
             yearly: Number(ov?.sales?.yearly || 0),
             currency: String(ov?.sales?.currency || 'SAR'),
           });
-          const ts = Number(ov?.stats?.totalUsers || 0);
-          const cust = Number(ov?.stats?.customers || 0);
-          const merch = Number(ov?.stats?.merchants || 0);
-          const tech = Number(ov?.stats?.technicians || 0);
-          const denom = ts > 0 ? ts : (cust + merch + tech) || 1;
+          const ts = Number(ov?.stats?.totalUsers ?? 0);
+          const cust = Number(ov?.stats?.customers ?? 0);
+          const merch = Number(ov?.stats?.merchants ?? 0);
+          const tech = Number(ov?.stats?.technicians ?? 0);
+          const denomRaw = ts > 0 ? ts : (cust + merch + tech);
+          const denom = Number.isFinite(denomRaw) && denomRaw > 0 ? denomRaw : 1;
+          const pct = (value: number) => {
+            const v = Number(value);
+            if (!Number.isFinite(v) || !Number.isFinite(denom) || denom <= 0) return 0;
+            const p = Math.round((v / denom) * 100);
+            return Math.max(0, Math.min(100, Number.isFinite(p) ? p : 0));
+          };
           setGrowthPct({
-            customers: Math.round((cust / denom) * 100),
-            merchants: Math.round((merch / denom) * 100),
-            technicians: Math.round((tech / denom) * 100),
+            customers: pct(cust),
+            merchants: pct(merch),
+            technicians: pct(tech),
           });
           setFinance({
             monthlyRevenue: Number(ov?.finance?.monthlyRevenue || 0),
@@ -82,9 +89,21 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
             servicesAccepted: Number(ov?.counts?.servicesAccepted || 0),
           });
         }
-        const parseNum = (resp: any) => { try { return Number(JSON.parse(String(resp?.data?.value ?? '0')) || 0); } catch { return 0; } };
+        const parseNum = (resp: any) => {
+          try {
+            const raw = JSON.parse(String(resp?.data?.value ?? '0'));
+            const n = typeof raw === 'number' ? raw : Number(raw ?? 0);
+            return Number.isFinite(n) ? n : 0;
+          } catch {
+            return 0;
+          }
+        };
         const p = parseNum(c1); const pm = parseNum(c2); const st = parseNum(c3);
-        setCommDraft({ products: String(p), projectsMerchants: String(pm), servicesTechnicians: String(st) });
+        setCommDraft({
+          products: String(Number.isFinite(p) ? p : 0),
+          projectsMerchants: String(Number.isFinite(pm) ? pm : 0),
+          servicesTechnicians: String(Number.isFinite(st) ? st : 0)
+        });
       } catch (e) {
         console.error('Failed to load reports data', e);
       } finally { hideFirstOverlay(); }
@@ -235,7 +254,18 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
               <div className="text-xl font-bold mb-2">{nf(commissions.products, commissions.currency)}</div>
               <div className="flex items-center gap-2">
                 <input className="border rounded px-3 py-2 w-24" type="number" min={0} max={100} value={commDraft.products} onChange={(e)=>setCommDraft(s=>({...s,products:e.target.value}))} />
-                <Button disabled={savingKey==='cp'} onClick={async ()=>{ setSavingKey('cp'); try{ await setAdminOption('commission_products', Number(commDraft.products||0)); } finally{ setSavingKey(null);} }}> {locale==='ar'?'حفظ':'Save'} </Button>
+                <Button
+                  disabled={savingKey==='cp'}
+                  onClick={async ()=>{
+                    setSavingKey('cp');
+                    try{
+                      const v = Number(commDraft.products);
+                      const safe = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0;
+                      await setAdminOption('commission_products', safe);
+                      setCommDraft(s=>({...s, products: String(safe)}));
+                    } finally{ setSavingKey(null);} }
+                  }
+                > {locale==='ar'?'حفظ':'Save'} </Button>
               </div>
               <div className="text-xs text-muted-foreground mt-1">{locale==='ar'?'النسبة:':'Rate:'} {commissions.rates?.products ?? 0}%</div>
             </CardContent>
@@ -247,7 +277,18 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
               <div className="text-xl font-bold mb-2">{nf(commissions.projectsMerchants, commissions.currency)}</div>
               <div className="flex items-center gap-2">
                 <input className="border rounded px-3 py-2 w-24" type="number" min={0} max={100} value={commDraft.projectsMerchants} onChange={(e)=>setCommDraft(s=>({...s,projectsMerchants:e.target.value}))} />
-                <Button disabled={savingKey==='cm'} onClick={async ()=>{ setSavingKey('cm'); try{ await setAdminOption('commission_projects_merchants', Number(commDraft.projectsMerchants||0)); } finally{ setSavingKey(null);} }}>{locale==='ar'?'حفظ':'Save'}</Button>
+                <Button
+                  disabled={savingKey==='cm'}
+                  onClick={async ()=>{
+                    setSavingKey('cm');
+                    try{
+                      const v = Number(commDraft.projectsMerchants);
+                      const safe = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0;
+                      await setAdminOption('commission_projects_merchants', safe);
+                      setCommDraft(s=>({...s, projectsMerchants: String(safe)}));
+                    } finally{ setSavingKey(null);} }
+                  }
+                >{locale==='ar'?'حفظ':'Save'}</Button>
               </div>
               <div className="text-xs text-muted-foreground mt-1">{locale==='ar'?'النسبة:':'Rate:'} {commissions.rates?.projectsMerchants ?? 0}%</div>
             </CardContent>
@@ -259,7 +300,18 @@ export default function AdminReports({ setCurrentPage, ...context }: Partial<Rou
               <div className="text-xl font-bold mb-2">{nf(commissions.servicesTechnicians, commissions.currency)}</div>
               <div className="flex items-center gap-2">
                 <input className="border rounded px-3 py-2 w-24" type="number" min={0} max={100} value={commDraft.servicesTechnicians} onChange={(e)=>setCommDraft(s=>({...s,servicesTechnicians:e.target.value}))} />
-                <Button disabled={savingKey==='cs'} onClick={async ()=>{ setSavingKey('cs'); try{ await setAdminOption('commission_services_technicians', Number(commDraft.servicesTechnicians||0)); } finally{ setSavingKey(null);} }}>{locale==='ar'?'حفظ':'Save'}</Button>
+                <Button
+                  disabled={savingKey==='cs'}
+                  onClick={async ()=>{
+                    setSavingKey('cs');
+                    try{
+                      const v = Number(commDraft.servicesTechnicians);
+                      const safe = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0;
+                      await setAdminOption('commission_services_technicians', safe);
+                      setCommDraft(s=>({...s, servicesTechnicians: String(safe)}));
+                    } finally{ setSavingKey(null);} }
+                  }
+                >{locale==='ar'?'حفظ':'Save'}</Button>
               </div>
               <div className="text-xs text-muted-foreground mt-1">{locale==='ar'?'النسبة:':'Rate:'} {commissions.rates?.servicesTechnicians ?? 0}%</div>
             </CardContent>
